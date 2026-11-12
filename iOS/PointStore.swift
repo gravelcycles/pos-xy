@@ -27,6 +27,7 @@ final class PointStore {
     }()
 
     static func dayKey(_ date: Date) -> String { dayFormatter.string(from: date) }
+    static func date(fromDayKey key: String) -> Date? { dayFormatter.date(from: key) }
 
     private init() {
         let fm = FileManager.default
@@ -64,6 +65,12 @@ final class PointStore {
             } catch {
                 print("PointStore write failed: \(error)")
             }
+        }
+    }
+
+    func delete(dayKey: String) {
+        queue.sync {
+            try? FileManager.default.removeItem(at: fileURL(dayKey: dayKey))
         }
     }
 

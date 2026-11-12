@@ -19,6 +19,11 @@ struct ContentView: View {
                 powerSection
                 Section {
                     NavigationLink {
+                        HistoryView()
+                    } label: {
+                        Label("History", systemImage: "calendar")
+                    }
+                    NavigationLink {
                         ExportView()
                     } label: {
                         Label("Export & AirDrop to Mac", systemImage: "square.and.arrow.up")

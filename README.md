@@ -39,6 +39,8 @@ No Apple ID is needed for the Mac app. It's signed to run locally.
 
 ## Using it
 
+**On the iPhone:** the main screen shows today's track as a local sketch, plus totals for walk, bike, drive and so on. **History** lists past days, each with its own sketch and trip timeline. Swipe a day to delete it.
+
 **Export from the iPhone:** tap **Export & AirDrop to Mac**, choose a range, keep **Lock with a passphrase** on, and tap **Create export file**, then **Send via AirDrop…** and pick your Mac. The file lands in `~/Downloads`.
 
 **View on the Mac:** double-click the `.pxy` file, drag it onto the viewer window, or press ⌘O. You can open several exports at once; they're merged and de-duplicated. If they share a passphrase you only type it once.
@@ -107,6 +109,10 @@ The plain export (`.json`):
 Locked export (`.pxy`): `"PXYENC01"` ‖ salt (16 B) ‖ PBKDF2 rounds (UInt32, big-endian) ‖ AES-GCM nonce ‖ ciphertext ‖ tag (16 B). The first 28 bytes are the GCM associated data. The plaintext is the JSON above, LZFSE-compressed.
 
 The viewer also opens bare JSON arrays of points and the phone's raw per-day `.jsonl` files.
+
+## Dependencies
+
+None. Both apps use only Apple's built-in frameworks: SwiftUI, CoreLocation, CoreMotion, CryptoKit, CommonCrypto, LocalAuthentication, and MapKit (Mac only). There are no third-party packages, analytics or crash reporters. The iPhone app contains no networking code, so it can't send your location anywhere. On the Mac, MapKit is only the map widget: Apple's map content is replaced by OSM tiles, and "show my location" is never turned on.
 
 ## Project layout
 
