@@ -17,11 +17,12 @@ final class OSMTileOverlay: MKTileOverlay {
         return URLSession(configuration: config)
     }()
 
-    init() {
-        super.init(urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png")
-        canReplaceMapContent = true
-        minimumZ = 1
-        maximumZ = 19
+    static func make() -> OSMTileOverlay {
+        let overlay = OSMTileOverlay(urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png")
+        overlay.canReplaceMapContent = true
+        overlay.minimumZ = 1
+        overlay.maximumZ = 19
+        return overlay
     }
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping (Data?, Error?) -> Void) {
@@ -82,7 +83,7 @@ struct TrackMapView: NSViewRepresentable {
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
         map.delegate = context.coordinator
-        map.addOverlay(OSMTileOverlay(), level: .aboveLabels)
+        map.addOverlay(OSMTileOverlay.make(), level: .aboveLabels)
         map.pointOfInterestFilter = .excludingAll
         map.showsCompass = true
         map.showsZoomControls = true
@@ -208,8 +209,8 @@ struct TrackMapView: NSViewRepresentable {
             }
             if let line = overlay as? TrackPolyline {
                 let r = MKPolylineRenderer(polyline: line)
-                r.strokeColor = line.type.nsColor.withAlphaComponent(line.faded ? 0.3 : 0.95)
-                r.lineWidth = line.faded ? 3 : 5
+                r.strokeColor = line.type.nsColor.withAlphaComponent(line.faded ? 0.45 : 0.95)
+                r.lineWidth = line.faded ? 4 : 5
                 r.lineCap = .round
                 r.lineJoin = .round
                 if line.type.isDashed { r.lineDashPattern = [8, 8] }

@@ -175,7 +175,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
             alt: loc.verticalAccuracy > 0 ? Self.round(loc.altitude, 1) : nil,
             acc: Self.round(loc.horizontalAccuracy, 1),
             spd: loc.speed >= 0 ? Self.round(loc.speed, 2) : nil,
-            crs: loc.course >= 0 ? Self.round(loc.course, 0) : nil,
+            crs: loc.course >= 0 ? Self.round(loc.course, 0).truncatingRemainder(dividingBy: 360) : nil,
             act: currentActivity == .unknown ? nil : currentActivity
         )
         store.append(point)

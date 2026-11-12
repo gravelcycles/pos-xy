@@ -96,6 +96,7 @@ final class TrackLibrary: ObservableObject {
         var all: [TrackPoint] = []
         all.reserveCapacity(points.count + new.count)
         for p in (points + new).sorted(by: { $0.t < $1.t }) {
+            guard p.t.timeIntervalSince1970.magnitude < 1e11 else { continue }   // garbage timestamp
             let key = Int64((p.t.timeIntervalSince1970 * 1000).rounded())
             if seen.insert(key).inserted { all.append(p) }
         }

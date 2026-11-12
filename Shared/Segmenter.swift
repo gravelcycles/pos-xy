@@ -137,9 +137,13 @@ enum Segmenter {
                 lo += 1
             }
             let mine = counts[labels[i]] ?? 0
-            if let best = counts.max(by: { $0.value < $1.value }), best.value > mine {
-                out[i] = best.key
+            // Ties go to the first type in `allCases` order so results are deterministic
+            // (and match web/static/js/segmenter.js).
+            var bestKey = labels[i], bestValue = -1
+            for t in ActivityType.allCases {
+                if let c = counts[t], c > bestValue { bestKey = t; bestValue = c }
             }
+            if bestValue > mine { out[i] = bestKey }
         }
         return out
     }

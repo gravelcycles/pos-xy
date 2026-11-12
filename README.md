@@ -3,13 +3,17 @@
 A private, on-device location history (your own "Google Maps Timeline"), in two parts:
 
 - **Pos XY** (iPhone) records where you go, in the background and in airplane mode. It never touches the network.
-- **Pos XY Viewer** (Mac) shows a day on an OpenStreetMap map. Scrub through the day and see each trip labelled as walk, run, bike, drive, flight or stay.
+- **Pos XY Viewer** (Mac app) shows a day on an OpenStreetMap map. Scrub through the day and see each trip labelled as walk, run, bike, drive, flight or stay.
+- **Web viewer** (any browser, served from `localhost`) does the same with no Xcode build. Run one Python command.
 
 You move data from phone to Mac by AirDrop. The file can be locked with a passphrase.
 
 ```
-iPhone ──(AirDrop .pxy, AES-256 locked)──▶ Mac ~/Downloads ──▶ Pos XY Viewer
+iPhone ──(AirDrop .pxy, AES-256 locked)──▶ Mac ~/Downloads ──▶ Pos XY Viewer (app)
+                                                          └──▶ localhost web viewer (browser)
 ```
+
+The file format is fully specified in [docs/FORMAT.md](docs/FORMAT.md), with test vectors.
 
 ## Install
 
@@ -37,13 +41,24 @@ Either press **⌘R** in Xcode with the **PosXYViewer** scheme, or run:
 
 No Apple ID is needed for the Mac app. It's signed to run locally.
 
+### Web viewer (no build needed)
+
+```sh
+python3 web/serve.py             # opens http://localhost:8765 and lists exports in ~/Downloads
+python3 web/serve.py --dir ~/Desktop/tracks --port 9000
+```
+
+It needs only Python 3 (included with Xcode's command line tools) and a modern browser: Safari 16.4+, Chrome 103+ or Firefox 113+. There's nothing to install: Leaflet, the map library, is vendored in `web/static/vendor/` at version 1.9.4, checked against npm's published SHA-512.
+
 ## Using it
 
 **On the iPhone:** the main screen shows today's track as a local sketch, plus totals for walk, bike, drive and so on. **History** lists past days, each with its own sketch and trip timeline. Swipe a day to delete it.
 
 **Export from the iPhone:** tap **Export & AirDrop to Mac**, choose a range, keep **Lock with a passphrase** on, and tap **Create export file**, then **Send via AirDrop…** and pick your Mac. The file lands in `~/Downloads`.
 
-**View on the Mac:** double-click the `.pxy` file, drag it onto the viewer window, or press ⌘O. You can open several exports at once; they're merged and de-duplicated. If they share a passphrase you only type it once.
+**View in the browser:** run `python3 web/serve.py`. Exports in `~/Downloads` appear in the left column; click one to load it, or drag files onto the page. Controls match the Mac app. ←/→ change day, Shift+←/→ jump 5 minutes, and space plays or pauses.
+
+**View in the Mac app:** double-click the `.pxy` file, drag it onto the viewer window, or press ⌘O. You can open several exports at once; they're merged and de-duplicated. If they share a passphrase you only type it once.
 
 | Viewer control | What it does |
 | --- | --- |
@@ -73,6 +88,12 @@ The track up to the playhead is drawn in colour and the rest faded. Stays are pu
 - Keeps your history **in memory only**. Quit it and it's gone. Your original files stay wherever you put them.
 - The only network traffic is map tiles from `tile.openstreetmap.org`. That server sees which map areas you look at, as with any web map. Tiles are cached on disk (up to 512 MB) so areas you revisit aren't requested again.
 
+**Web viewer**
+- `serve.py` listens on `127.0.0.1` only. It refuses requests whose `Host` isn't `localhost` (which blocks DNS-rebinding attacks), serves only export-looking files from the chosen folder by bare name (no paths), never lists directories, and makes no outbound requests itself.
+- Decryption happens in the browser tab with Web Crypto. The passphrase never reaches the server.
+- The page's Content-Security-Policy forbids connecting to anything except `localhost`, and forbids loading images from anywhere except `tile.openstreetmap.org`. So even a bug couldn't send your data elsewhere.
+- Loaded data lives only in the tab's memory. Close the tab, or click **Forget all**.
+
 ## Airplane mode and flights
 
 GPS is receive-only, so it works in airplane mode and on flights with no network. Expect:
@@ -96,7 +117,9 @@ Smart mode uses full GPS while you're moving (a point every 15 m) and drops to c
 
 ## File format
 
-The plain export (`.json`):
+See **[docs/FORMAT.md](docs/FORMAT.md)** for the full spec: point fields and units, the export document, the phone's day files, the locked `.pxy` byte layout (PBKDF2-SHA256 → AES-256-GCM over raw-DEFLATE JSON), and the reader rules. There's a JSON Schema in [docs/pos-xy.schema.json](docs/pos-xy.schema.json) and test vectors in [docs/test-vectors/](docs/test-vectors/).
+
+In short, a plain export looks like this:
 
 ```json
 { "format": "pos-xy", "version": 1, "exportedAt": 1762990000,
@@ -104,15 +127,18 @@ The plain export (`.json`):
                 "alt": 12.3, "acc": 5.0, "spd": 1.42, "crs": 270, "act": "walking" } ] }
 ```
 
-`t` is Unix time; `alt`, `acc`, `spd`, `crs` and `act` are optional. `act` is one of `stationary`, `walking`, `running`, `cycling`, `driving`.
+## Tests
 
-Locked export (`.pxy`): `"PXYENC01"` ‖ salt (16 B) ‖ PBKDF2 rounds (UInt32, big-endian) ‖ AES-GCM nonce ‖ ciphertext ‖ tag (16 B). The first 28 bytes are the GCM associated data. The plaintext is the JSON above, LZFSE-compressed.
+```sh
+node --test web/tests/*.test.mjs                    # web reader vs. test vectors, segmenter vs. Swift golden output
+python3 docs/test-vectors/make_vectors.py --check   # independent Python implementation (needs: pip install cryptography)
+```
 
-The viewer also opens bare JSON arrays of points and the phone's raw per-day `.jsonl` files.
+The segmenter exists twice, in `Shared/Segmenter.swift` (both apps) and `web/static/js/segmenter.js`. `web/tests/segmenter.test.mjs` pins the JS output to golden values produced by the Swift code. Keep the two in sync.
 
 ## Dependencies
 
-None. Both apps use only Apple's built-in frameworks: SwiftUI, CoreLocation, CoreMotion, CryptoKit, CommonCrypto, LocalAuthentication, and MapKit (Mac only). There are no third-party packages, analytics or crash reporters. The iPhone app contains no networking code, so it can't send your location anywhere. On the Mac, MapKit is only the map widget: Apple's map content is replaced by OSM tiles, and "show my location" is never turned on.
+No third-party code in the apps. Both use only Apple's built-in frameworks: SwiftUI, CoreLocation, CoreMotion, CryptoKit, CommonCrypto, LocalAuthentication, and MapKit (Mac only). There are no third-party packages, analytics or crash reporters. The iPhone app contains no networking code, so it can't send your location anywhere. On the Mac, MapKit is only the map widget: Apple's map content is replaced by OSM tiles, and "show my location" is never turned on. The web viewer uses Leaflet, a widely used open-source map library vendored in the repo. It makes no network requests except loading the tile images you see.
 
 ## Project layout
 
@@ -121,6 +147,8 @@ Shared/   models, activity segmentation, export encryption (used by both apps)
 iOS/      recorder app: CoreLocation + CoreMotion, storage, export, Face ID lock
 Mac/      viewer app: MapKit + OpenStreetMap tiles, timeline, trip list
 Config/   Info.plists and Mac sandbox entitlements
+web/      localhost web viewer: serve.py (stdlib only) + static/ (HTML, JS, vendored Leaflet) + tests/
+docs/     FORMAT.md spec, JSON Schema, test vectors
 ```
 
 Requires iOS 17+ and macOS 14+. Built with Xcode 16 or newer.

@@ -36,7 +36,9 @@ struct ExportFile: Codable {
 ///     iterations            4 bytes  big-endian UInt32 (PBKDF2-HMAC-SHA256)
 ///     nonce|ciphertext|tag   …       AES-256-GCM "combined" box, header bytes as AAD
 ///
-/// The plaintext is the JSON above, LZFSE-compressed.
+/// The plaintext is the JSON above, compressed with raw DEFLATE (RFC 1951, no zlib/gzip header).
+/// Apple's `.zlib` algorithm produces exactly that, and browsers read it with
+/// `DecompressionStream("deflate-raw")`. Full spec: docs/FORMAT.md.
 enum ExportCodec {
     static let magic = Data("PXYENC01".utf8)
     static let defaultIterations: UInt32 = 600_000
@@ -51,7 +53,7 @@ enum ExportCodec {
     }
 
     static func encrypt(_ plain: Data, passphrase: String, iterations: UInt32 = defaultIterations) throws -> Data {
-        let compressed = try (plain as NSData).compressed(using: .lzfse) as Data
+        let compressed = try (plain as NSData).compressed(using: .zlib) as Data
 
         var salt = Data(count: 16)
         let rc = salt.withUnsafeMutableBytes { buf -> Int32 in
@@ -85,7 +87,7 @@ enum ExportCodec {
         do {
             let box = try AES.GCM.SealedBox(combined: Data(bytes[h...]))
             let compressed = try AES.GCM.open(box, using: key, authenticating: header)
-            return try (compressed as NSData).decompressed(using: .lzfse) as Data
+            return try (compressed as NSData).decompressed(using: .zlib) as Data
         } catch {
             throw ExportError.wrongPassphrase
         }

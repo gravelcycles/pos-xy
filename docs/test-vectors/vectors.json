@@ -1,0 +1,30 @@
+[
+  {
+    "file": "vector-1.pxy",
+    "passphrase": "correct horse battery staple",
+    "passphrase_nfc_utf8_hex": "636f727265637420686f727365206261747465727920737461706c65",
+    "salt_hex": "000102030405060708090a0b0c0d0e0f",
+    "iterations": 600000,
+    "nonce_hex": "a0a1a2a3a4a5a6a7a8a9aaab",
+    "key_hex": "ef177144eec9420cbc1093d2a8b344a92bc506d0d4ec9c028dd19f8324d8c1e6",
+    "header_hex": "505859454e433031000102030405060708090a0b0c0d0e0f000927c0",
+    "plaintext_file": "plaintext.json",
+    "plaintext_sha256": "c868829fc41722f4af6928d8deaa9585e82c2463a2a87fdea69cecbbb43a4978",
+    "file_sha256": "e8a5b3e8b2cbfa42cdc2986dbffbb59d0091da6188879870780b072bf75f5759",
+    "file_length": 241
+  },
+  {
+    "file": "vector-2.pxy",
+    "passphrase": "Zürich ✈ 2026",
+    "passphrase_nfc_utf8_hex": "5ac3bc7269636820e29c882032303236",
+    "salt_hex": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+    "iterations": 1000,
+    "nonce_hex": "0102030405060708090a0b0c",
+    "key_hex": "2ff49bae96c008bcf03cdb303403178e1339ec649c893db99d43830fc3978eb8",
+    "header_hex": "505859454e433031f0e1d2c3b4a5968778695a4b3c2d1e0f000003e8",
+    "plaintext_file": "plaintext.json",
+    "plaintext_sha256": "c868829fc41722f4af6928d8deaa9585e82c2463a2a87fdea69cecbbb43a4978",
+    "file_sha256": "26a50a4ad47c85e20de6f41466fbcabf9cb34a1bad3aaa008c37c81e6eced7bf",
+    "file_length": 241
+  }
+]

@@ -22,12 +22,12 @@ struct ExportView: View {
     @State private var result: ExportResult?
     @State private var errorText: String?
 
-    private static var exportDir: URL {
+    nonisolated private static var exportDir: URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("Exports", isDirectory: true)
     }
 
     /// Exports are temporary copies; clean them up on launch.
-    static func removeOldExports() {
+    nonisolated static func removeOldExports() {
         try? FileManager.default.removeItem(at: exportDir)
     }
 
@@ -123,6 +123,7 @@ struct ExportView: View {
         result = nil
         let (start, end) = bounds()
         let pass: String? = encrypt ? passphrase : nil
+        let dir = Self.exportDir
         do {
             result = try await Task.detached(priority: .userInitiated) { () throws -> ExportResult in
                 let points = PointStore.shared.points(from: start, to: end)
@@ -139,8 +140,8 @@ struct ExportView: View {
                 }
                 let a = PointStore.dayKey(first.t), b = PointStore.dayKey(last.t)
                 let name = a == b ? "PosXY \(a)" : "PosXY \(a) to \(b)"
-                try FileManager.default.createDirectory(at: Self.exportDir, withIntermediateDirectories: true)
-                let url = Self.exportDir.appendingPathComponent("\(name).\(ext)")
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                let url = dir.appendingPathComponent("\(name).\(ext)")
                 try data.write(to: url, options: [.atomic, .completeFileProtection])
                 return ExportResult(url: url, points: points.count, bytes: data.count)
             }.value
