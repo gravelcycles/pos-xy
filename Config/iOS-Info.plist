@@ -14,6 +14,8 @@
 	<string>Pos XY uses motion data to tell walking, running, cycling and driving apart.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Face ID keeps your location history private.</string>
+	<key>PosXYAppGroup</key>
+	<string>group.$(APP_BUNDLE_ID)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

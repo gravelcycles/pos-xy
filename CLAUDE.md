@@ -15,7 +15,9 @@ A private location history ("my own Google Maps Timeline"):
 ```
 PosXY.xcodeproj   hand-written, objectVersion 77, "synchronized folder" groups (Xcode 16+)
 Shared/           Swift used by BOTH apps: TrackPoint, ActivityType, Segmenter, Places, Importers, ExportCodec, Formatting
-iOS/              iPhone app target "PosXY"   (bundle io.github.gravelcycles.posxy, iOS 17+)
+iOS/              iPhone app target "PosXY"   (bundle $(APP_BUNDLE_ID) = io.github.gravelcycles.posxy, iOS 17+)
+iOSShared/        Swift compiled into BOTH PosXY and PosXYWidgets: RecordingStatus (App Group), control intents
+Widgets/          widget extension target "PosXYWidgets" ($(APP_BUNDLE_ID).widgets, iOS 18+): status widget + controls
 Mac/              Mac app target "PosXYViewer" (bundle io.github.gravelcycles.posxy.viewer, macOS 14+)
 Config/           Info.plists (merged with generated keys) + Mac sandbox entitlements
 web/              serve.py (stdlib) + static/ (index.html, app.css, js/, vendor/leaflet) + tests/
@@ -23,7 +25,9 @@ docs/             FORMAT.md (data format spec), pos-xy.schema.json, test-vectors
 scripts/          deploy-iphone.sh, install-mac-viewer.sh, parity/run.sh, ci-simulator-run.sh, pretty.sh
 .github/workflows ci.yml (build + simulator smoke test + Mac screenshot), testflight.yml (needs secrets)
 ```
-- Add Swift files by dropping them into `Shared/`, `iOS/` or `Mac/`; no project edits are needed. Never put an `Info.plist` inside those folders.
+- Add Swift files by dropping them into `Shared/`, `iOS/`, `iOSShared/`, `Widgets/` or `Mac/`; no project edits are needed. Never put an `Info.plist` inside those folders.
+- **Bundle IDs:** the project-level `APP_BUNDLE_ID` drives the iPhone app, the widget extension (`.widgets`) and the App Group (`group.$(APP_BUNDLE_ID)`, also written into both Info.plists as `PosXYAppGroup`). Override `APP_BUNDLE_ID`, never `PRODUCT_BUNDLE_IDENTIFIER`, on the command line.
+- **Widgets/controls:** the app publishes `RecordingStatus` (no coordinates) through `iOS/WidgetSync.swift`. The control intents conform to `LiveActivityIntent` so they run in the app's process; code that touches `LocationRecorder` in `iOSShared/` must sit inside `#if !WIDGET_EXTENSION`.
 - The project uses Swift 5 language mode (`SWIFT_VERSION = 5.0`), not strict Swift 6 concurrency.
 
 ## Commands

@@ -89,6 +89,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         lastPoint = store.lastPoint()
         refreshTodayCount()
         if isRecording { beginUpdates() }
+        WidgetSync.publish(widgetStatus, force: true)
     }
 
     // MARK: Control
@@ -103,6 +104,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
             break
         }
         beginUpdates()
+        WidgetSync.publish(widgetStatus, force: true)
     }
 
     func stop() {
@@ -116,11 +118,23 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         pausedUntil = nil
         defaults.removeObject(forKey: Keys.pausedUntil)
         stopSchedule()
+        WidgetSync.publish(widgetStatus, force: true)
     }
 
     func refreshTodayCount() {
         countDayKey = PointStore.dayKey(Date())
         todayCount = store.count(dayKey: countDayKey)
+        WidgetSync.publish(widgetStatus, force: false)
+    }
+
+    /// What the Lock Screen widgets and Control Center controls show (no coordinates).
+    var widgetStatus: RecordingStatus {
+        RecordingStatus(isRecording: isRecording,
+                        pausedUntil: isPaused ? pausedUntil : nil,
+                        dayKey: countDayKey,
+                        pointsToday: todayCount,
+                        lastFix: lastPoint?.t,
+                        intervalSeconds: interval)
     }
 
     private func beginUpdates() {
@@ -219,12 +233,14 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         defaults.set(date, forKey: Keys.pausedUntil)
         isLowPower = false
         configureSchedule()
+        WidgetSync.publish(widgetStatus, force: true)
     }
 
     func resume() {
         pausedUntil = nil
         defaults.removeObject(forKey: Keys.pausedUntil)
         configureSchedule()
+        WidgetSync.publish(widgetStatus, force: true)
     }
 
     /// "Until tomorrow morning": 7:00 tomorrow.
@@ -343,6 +359,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
 
         if PointStore.dayKey(point.t) == countDayKey {
             todayCount += 1
+            WidgetSync.publish(widgetStatus, force: false)
         } else {
             refreshTodayCount()
         }

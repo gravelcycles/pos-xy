@@ -5,6 +5,10 @@
 #   TEAM=ABCDE12345 DEVICE=<udid> scripts/deploy-iphone.sh
 #   BUNDLE_ID=com.yourname.posxy scripts/deploy-iphone.sh   # if the default ID is taken
 #   CONFIG=Debug scripts/deploy-iphone.sh                   # default Release (realistic battery use)
+#   APP_GROUPS=0 scripts/deploy-iphone.sh                   # sign without the App Group (widgets then show "Off")
+#
+# BUNDLE_ID sets the project's APP_BUNDLE_ID, so the widget extension becomes $BUNDLE_ID.widgets and
+# the App Group group.$BUNDLE_ID. Never override PRODUCT_BUNDLE_IDENTIFIER: the extension would get the app's ID.
 #
 # One-time, by hand (Claude can't do these):
 #   • Xcode → Settings → Accounts → add your Apple ID (free works; apps then expire after 7 days).
@@ -64,12 +68,27 @@ fi
 say "Device $DEVICE"
 
 # --- Build & sign --------------------------------------------------------------------------------
+LOG="$DERIVED/deploy-build.log"
+mkdir -p "$DERIVED"
+build() {   # extra build settings as arguments
+  xcodebuild -project PosXY.xcodeproj -scheme PosXY -configuration "$CONFIG" \
+    -destination "id=$DEVICE" -derivedDataPath "$DERIVED" \
+    DEVELOPMENT_TEAM="$TEAM" APP_BUNDLE_ID="$BUNDLE_ID" CODE_SIGN_STYLE=Automatic \
+    -allowProvisioningUpdates "$@" build 2>&1 | tee "$LOG" | scripts/pretty.sh
+}
 say "Building PosXY ($CONFIG) as $BUNDLE_ID"
-set -o pipefail
-xcodebuild -project PosXY.xcodeproj -scheme PosXY -configuration "$CONFIG" \
-  -destination "id=$DEVICE" -derivedDataPath "$DERIVED" \
-  DEVELOPMENT_TEAM="$TEAM" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" CODE_SIGN_STYLE=Automatic \
-  -allowProvisioningUpdates build 2>&1 | scripts/pretty.sh
+if [ "${APP_GROUPS:-1}" = 0 ]; then
+  build CODE_SIGN_ENTITLEMENTS=
+elif ! build; then
+  # Some Apple ID setups can't provision App Groups. Everything except the widgets' live status
+  # works without it, so retry once without the entitlement rather than failing.
+  if grep -qiE "app ?groups?|application-groups" "$LOG"; then
+    say "Signing with the App Group failed; retrying without it (widgets will show 'Off')"
+    build CODE_SIGN_ENTITLEMENTS=
+  else
+    die "Build failed (full log: $LOG)"
+  fi
+fi
 
 APP="$DERIVED/Build/Products/$CONFIG-iphoneos/PosXY.app"
 [ -d "$APP" ] || die "Build produced no app at $APP"
