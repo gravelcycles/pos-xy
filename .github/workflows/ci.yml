@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web viewer + format tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: JS tests (format vectors, segmenter golden output)
+        run: node --test web/tests/*.test.mjs
+      - name: Test vectors (independent Python implementation)
+        run: |
+          python3 -m pip install --quiet cryptography
+          python3 docs/test-vectors/make_vectors.py --check
+      - name: serve.py compiles
+        run: python3 -m py_compile web/serve.py
+
+  apple:
+    name: Build iPhone + Mac apps
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Build Mac viewer (Release, signed to run locally)
+        run: |
+          set -o pipefail
+          xcodebuild -project PosXY.xcodeproj -scheme PosXYViewer -configuration Release \
+            -destination 'generic/platform=macOS' -derivedDataPath build \
+            CODE_SIGN_IDENTITY=- build 2>&1 | scripts/pretty.sh
+
+      - name: Build iPhone app for devices (Release, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project PosXY.xcodeproj -scheme PosXY -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | scripts/pretty.sh
+
+      - name: Build iPhone app for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project PosXY.xcodeproj -scheme PosXY -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
+            build 2>&1 | scripts/pretty.sh
+
+      - name: Simulator smoke test (records a simulated drive)
+        timeout-minutes: 25
+        run: scripts/ci-simulator-run.sh build/sim
+
+      - name: Recorded data parses with the web viewer's reader
+        run: |
+          for f in build/sim/*.jsonl; do echo "== $f"; node web/tests/parity.mjs "$f"; done
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent build/Build/Products/Release/PosXYViewer.app dist/PosXYViewer-mac.zip
+          mkdir -p Payload && cp -R build/Build/Products/Release-iphoneos/PosXY.app Payload/
+          zip -qry dist/PosXY-unsigned.ipa Payload
+          ls -la dist
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: apps
+          path: dist/
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: simulator-run
+          path: build/sim/
+          if-no-files-found: ignore
+
+  release:
+    name: GitHub Release (on version tags)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [web, apple]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: apps
+          path: dist
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --generate-notes \
+            --notes "Mac viewer: unzip, then right-click PosXYViewer.app → Open the first time (it isn't notarized). iPhone: see docs/DISTRIBUTION.md."
