@@ -339,7 +339,8 @@ function renderDayPanel() {
 // ---------------------------------------------------------------- render: overview mode
 function renderOverview() {
   overviewLayer.clearLayers();
-  const all = state.days.map((d) => dayData(d.key));
+  // Until the background analysis finishes, draw only the days already analyzed.
+  const all = state.analyzed ? state.days.map((d) => dayData(d.key)) : state.days.map((d) => state.dayCache.get(d.key)).filter(Boolean);
   const segs = all.flatMap((d) => d.segments);
   totalsList($('totals'), segs, [
     ['Days recorded', state.days.length.toLocaleString()],
@@ -349,7 +350,8 @@ function renderOverview() {
   $('summaryTitle').textContent = 'All time';
   $('showDay').textContent = 'Show everything';
 
-  // All movement, thin, one polyline per segment, thinned to ≥ 25 m steps.
+  // All movement, thin, one polyline per segment. Thinned so years of data stay drawable.
+  const step = 25 * Math.max(1, state.points.length / 150000);
   for (const d of all) {
     for (const s of d.segments) {
       if (s.type === 'stationary') continue;
@@ -357,7 +359,7 @@ function renderOverview() {
       let last = null;
       for (let i = s.first; i <= s.last; i++) {
         const p = d.points[i];
-        if (!last || i === s.last || distance(last, p) >= 25) { coords.push(latlng(p)); last = p; }
+        if (!last || i === s.last || distance(last, p) >= step) { coords.push(latlng(p)); last = p; }
       }
       if (coords.length > 1) {
         L.polyline(coords, { color: ACTIVITY[s.type].color, weight: 2.5, opacity: 0.55, interactive: false,
@@ -475,20 +477,34 @@ function render({ fit = false } = {}) {
 }
 
 // ---------------------------------------------------------------- data
+/** Groups the (time-sorted) points into local days in one pass: each day is an index range. */
 function rebuildDays() {
-  const counts = new Map();
-  for (const p of state.points) { const k = dayKeyOf(p.t); counts.set(k, (counts.get(k) ?? 0) + 1); }
-  state.days = [...counts].map(([key, count]) => ({ key, count, date: dateOfKey(key) })).sort((a, b) => (a.key < b.key ? 1 : -1));
+  const ranges = new Map();
+  let key = null, startOfNext = -Infinity, cur = null;
+  for (let i = 0; i < state.points.length; i++) {
+    const t = state.points[i].t;
+    if (t >= startOfNext || cur === null) {
+      key = dayKeyOf(t);
+      const d = dateOfKey(key);
+      startOfNext = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() / 1000;
+      cur = ranges.get(key);
+      if (!cur) { cur = { lo: i, hi: i + 1 }; ranges.set(key, cur); }
+    }
+    cur.hi = i + 1;
+  }
+  state.days = [...ranges].map(([k, r]) => ({ key: k, lo: r.lo, hi: r.hi, count: r.hi - r.lo, date: dateOfKey(k) }))
+    .sort((a, b) => (a.key < b.key ? 1 : -1));
+  state.dayIndex = new Map(state.days.map((d) => [d.key, d]));
   state.dayCache.clear();
 }
 
 function dayData(key) {
   if (state.dayCache.has(key)) return state.dayCache.get(key);
-  const pts = clean(state.points.filter((p) => dayKeyOf(p.t) === key));
+  const info = state.dayIndex?.get(key);
+  const pts = info ? clean(state.points.slice(info.lo, info.hi)) : [];
   const segs = segmentDay(pts);
   const data = { key, points: pts, segments: segs, gap: gapThreshold(pts) };
   state.dayCache.set(key, data);
-  const info = state.days.find((d) => d.key === key);
   if (info) info.distance = segs.reduce((sum, s) => sum + (s.type === 'stationary' ? 0 : s.distance), 0);
   return data;
 }
@@ -497,15 +513,31 @@ function applyPlaceNames() {
   for (const p of state.places) p.display = customNameFor(p.lat, p.lon)?.name ?? p.name;
 }
 
-/** Segments every day (cached) and detects places. Runs after each import. */
-function analyzeAll() {
+/**
+ * Segments every day and detects places, in ~40 ms slices so the page stays responsive even with
+ * years of Google Takeout history. A newer import cancels a running analysis.
+ */
+let analysisRun = 0;
+async function analyzeAll() {
+  const run = ++analysisRun;
   const stays = [];
-  for (const d of state.days) {
-    const data = dayData(d.key);
+  const days = [...state.days];
+  let sliceStart = performance.now();
+  for (let i = 0; i < days.length; i++) {
+    const data = dayData(days[i].key);
     stays.push(...staysFromDay(data.points, data.segments));
+    if (performance.now() - sliceStart > 40) {
+      if (days.length > 60) toast(`Analyzing your history… ${Math.round((i / days.length) * 100)}%`);
+      await new Promise((r) => setTimeout(r, 0));
+      if (run !== analysisRun) return false;
+      sliceStart = performance.now();
+    }
   }
+  if (run !== analysisRun) return false;
   state.places = detectPlaces(stays);
   applyPlaceNames();
+  state.analyzed = true;
+  return true;
 }
 
 function placeAt(lat, lon) {
@@ -527,13 +559,23 @@ function merge(newPoints, name) {
   const firstLoad = state.points.length === 0;
   state.points = all;
   state.loadedNames.add(name);
+  state.analyzed = false;
   rebuildDays();
-  analyzeAll();
   markLoadedFiles();
-  if (firstLoad && applyHash()) return;
-  if (state.mode === 'overview') { render({ fit: firstLoad }); return; }
-  if (!state.day || !state.days.some((d) => d.key === state.day.key)) selectDay(state.days[0]?.key);
-  else selectDay(state.day.key, { keepView: true });
+  // Show something right away; places and day distances fill in when the analysis finishes.
+  const show = () => {
+    if (firstLoad && applyHash()) return;
+    if (state.mode === 'overview') { render({ fit: firstLoad }); return; }
+    if (!state.day || !state.dayIndex.has(state.day.key)) selectDay(state.days[0]?.key);
+    else selectDay(state.day.key, { keepView: true });
+  };
+  if (state.mode !== 'overview') show();
+  analyzeAll().then((done) => {
+    if (!done) return;
+    if (state.mode === 'overview') show();
+    else { renderDayPanel(); drawnCutoff = null; renderTime(); renderDayList(); }
+    if (state.days.length > 60) toast(`${state.days.length.toLocaleString()} days analyzed · ${state.places.filter((p) => p.name).length} places found.`);
+  });
 }
 
 function selectDay(key, { keepView = false, time = null } = {}) {
@@ -546,6 +588,7 @@ function selectDay(key, { keepView = false, time = null } = {}) {
 
 function setMode(mode) {
   if (!state.days.length) return;
+  if (mode === 'overview' && !state.analyzed) toast('Still analyzing your history; the overview fills in when it\'s done.');
   setPlaying(false);
   if (mode === 'day' && !state.day) state.day = dayData(state.days[0].key);
   state.mode = mode;
@@ -788,6 +831,7 @@ function wire() {
     state.day = null; state.mode = 'day';
     customNames = []; saveNames([]);
     try { localStorage.removeItem(NAMES_KEY); } catch { /* ignore */ }
+    analysisRun++; state.analyzed = false;
     rebuildDays(); closeSearch(); markLoadedFiles(); render();
   });
   $('prevDay').addEventListener('click', () => stepDay(1));
