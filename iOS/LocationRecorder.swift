@@ -25,6 +25,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         static let recording = "recorder.isRecording"
         static let power = "recorder.powerMode"
         static let interval = "recorder.intervalSeconds"
+        static let pausedUntil = "recorder.pausedUntil"
     }
 
     /// "Record a point" presets, in seconds. 0 = continuously (every ~15 m moved).
@@ -53,6 +54,9 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     @Published private(set) var nextPointAt: Date?
     /// True while the GPS is on to take a timed point.
     @Published private(set) var isTakingPoint = false
+    /// While set and in the future, nothing is recorded (privacy pause).
+    @Published private(set) var pausedUntil: Date?
+    var isPaused: Bool { pausedUntil.map { $0 > Date() } ?? false }
     @Published var powerMode: PowerMode {
         didSet {
             defaults.set(powerMode.rawValue, forKey: Keys.power)
@@ -76,6 +80,8 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         isRecording = UserDefaults.standard.bool(forKey: Keys.recording)
         powerMode = PowerMode(rawValue: UserDefaults.standard.string(forKey: Keys.power) ?? "") ?? .smart
         interval = max(0, UserDefaults.standard.integer(forKey: Keys.interval))
+        let paused = UserDefaults.standard.object(forKey: Keys.pausedUntil) as? Date
+        pausedUntil = (paused ?? .distantPast) > Date() ? paused : nil
         super.init()
         manager.delegate = self
         authorization = manager.authorizationStatus
@@ -107,6 +113,8 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         motion.stopActivityUpdates()
         manager.allowsBackgroundLocationUpdates = false
         isLowPower = false
+        pausedUntil = nil
+        defaults.removeObject(forKey: Keys.pausedUntil)
         stopSchedule()
     }
 
@@ -132,6 +140,12 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private func applyAccuracy() {
+        if isPaused {
+            // Paused: no GPS. The coarse session keeps the app alive so it can resume on time.
+            manager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
+            manager.distanceFilter = CLLocationDistanceMax
+            return
+        }
         if interval > 0 {
             if isTakingPoint {
                 manager.desiredAccuracy = kCLLocationAccuracyBest
@@ -187,7 +201,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     // MARK: CLLocationManagerDelegate
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard isRecording else { return }
+        guard isRecording, !isPaused else { return }
         if interval > 0 {
             for loc in locations { consider(loc) }
         } else {
@@ -197,14 +211,37 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
 
     // MARK: Interval mode ("Record a point every N minutes")
 
+    // MARK: Pause
+
+    /// Stops recording until `date`, then resumes by itself.
+    func pause(until date: Date) {
+        pausedUntil = date
+        defaults.set(date, forKey: Keys.pausedUntil)
+        isLowPower = false
+        configureSchedule()
+    }
+
+    func resume() {
+        pausedUntil = nil
+        defaults.removeObject(forKey: Keys.pausedUntil)
+        configureSchedule()
+    }
+
+    /// "Until tomorrow morning": 7:00 tomorrow.
+    static func tomorrowMorning(from now: Date = Date()) -> Date {
+        let cal = Calendar.current
+        let tomorrow = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) ?? now.addingTimeInterval(86_400)
+        return cal.date(bySettingHour: 7, minute: 0, second: 0, of: tomorrow) ?? tomorrow
+    }
+
     private func configureSchedule() {
         stopSchedule()
-        guard isRecording, interval > 0 else {
+        guard isRecording, interval > 0 || isPaused else {
             applyAccuracy()
             return
         }
         isLowPower = false
-        nextPointAt = Date()                       // take the first point right away
+        nextPointAt = isPaused ? nil : Date()      // take the first point right away
         let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.tick() }
         timer.tolerance = 1
         RunLoop.main.add(timer, forMode: .common)
@@ -227,6 +264,10 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
 
     private func tick() {
         let now = Date()
+        if let until = pausedUntil {
+            if now >= until { resume() }           // also restarts timed mode if it's on
+            return
+        }
         if let started = pointStartedAt {
             if now.timeIntervalSince(started) >= pointTimeout { finishPoint() }
         } else if let due = nextPointAt, now >= due {
@@ -284,7 +325,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private func record(_ loc: CLLocation) {
-        guard loc.horizontalAccuracy >= 0, loc.horizontalAccuracy <= 200 else { return }
+        guard !isPaused, loc.horizontalAccuracy >= 0, loc.horizontalAccuracy <= 200 else { return }
         if let last = lastPoint, loc.timestamp <= last.t { return }
 
         let point = TrackPoint(

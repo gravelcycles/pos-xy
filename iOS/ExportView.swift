@@ -26,6 +26,10 @@ struct ExportView: View {
         FileManager.default.temporaryDirectory.appendingPathComponent("Exports", isDirectory: true)
     }
 
+    private static let lastExportKey = "export.lastCreated"
+    /// When an export file was last created (shown as a backup reminder).
+    static var lastExport: Date? { UserDefaults.standard.object(forKey: lastExportKey) as? Date }
+
     /// Exports are temporary copies; clean them up on launch.
     nonisolated static func removeOldExports() {
         try? FileManager.default.removeItem(at: exportDir)
@@ -145,6 +149,7 @@ struct ExportView: View {
                 try data.write(to: url, options: [.atomic, .completeFileProtection])
                 return ExportResult(url: url, points: points.count, bytes: data.count)
             }.value
+            UserDefaults.standard.set(Date(), forKey: Self.lastExportKey)
         } catch {
             errorText = error.localizedDescription
         }

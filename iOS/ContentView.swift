@@ -27,7 +27,14 @@ struct ContentView: View {
                     NavigationLink {
                         ExportView()
                     } label: {
-                        Label("Export & AirDrop to Mac", systemImage: "square.and.arrow.up")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Label("Export & AirDrop to Mac", systemImage: "square.and.arrow.up")
+                            if let last = ExportView.lastExport {
+                                Text("Last export \(RelativeDateTimeFormatter().localizedString(for: last, relativeTo: Date()))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
                 privacySection
@@ -56,6 +63,27 @@ struct ContentView: View {
                     }
                 }
                 .foregroundStyle(.orange)
+            }
+            if recorder.isRecording, let until = recorder.pausedUntil, until > Date() {
+                HStack {
+                    Label {
+                        Text("Paused until \(until.formatted(date: until.timeIntervalSinceNow > 20 * 3600 ? .abbreviated : .omitted, time: .shortened))")
+                    } icon: {
+                        Image(systemName: "pause.circle.fill")
+                    }
+                    .foregroundStyle(.orange)
+                    Spacer()
+                    Button("Resume") { recorder.resume() }
+                        .buttonStyle(.bordered)
+                }
+            } else if recorder.isRecording {
+                Menu {
+                    Button("For 1 hour") { recorder.pause(until: Date().addingTimeInterval(3600)) }
+                    Button("For 4 hours") { recorder.pause(until: Date().addingTimeInterval(4 * 3600)) }
+                    Button("Until tomorrow morning") { recorder.pause(until: LocationRecorder.tomorrowMorning()) }
+                } label: {
+                    Label("Pause recording…", systemImage: "pause.circle")
+                }
             }
             if recorder.isRecording {
                 LabeledContent("Points today", value: "\(recorder.todayCount)")

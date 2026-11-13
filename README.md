@@ -143,6 +143,12 @@ GPS is receive-only, so it works in airplane mode and on flights with no network
 
 It's heuristic. Trains usually show up as **Drive**.
 
+## Pause, Siri and Shortcuts
+
+- **Pause recording…** on the main screen stops recording for 1 hour, 4 hours, or until 7:00 tomorrow, then resumes by itself. Use it for places you'd rather not have in your history. Nothing is recorded while paused, and the GPS stays off.
+- **Siri and Shortcuts:** *Start Recording*, *Stop Recording* and *Pause Recording* (for N hours) show up in the Shortcuts app and work with Siri ("Pause Pos XY"). Pair them with automations, for example *When CarPlay connects → Start Recording*, or *When I arrive at [place] → Pause Recording*.
+- The Export row shows when you last made an export, as a reminder to back up.
+
 ## Recording frequency
 
 On the phone, **Frequency → Record a point**:
