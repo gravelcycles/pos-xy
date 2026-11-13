@@ -264,6 +264,7 @@ struct TimelineControls: View {
 
                 Toggle("Follow", isOn: $follow)
                     .toggleStyle(.checkbox)
+                    .fixedSize()
                     .help("Keep the map centred on the marker")
             }
         }
@@ -352,8 +353,11 @@ struct SegmentList: View {
                             .monospacedDigit()
                     }
                 }
-                Button("Show whole day", action: onShowDay)
-                    .buttonStyle(.link)
+                Button(action: onShowDay) {
+                    Label("Show whole day", systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(Color.accentColor)
             } header: {
                 Text("\(points.count) points")
             }
