@@ -1,0 +1,21 @@
+{
+  "semanticSegments": [
+    {"startTime": "2024-03-10T09:00:00.000+01:00", "endTime": "2024-03-10T10:30:00.000+01:00",
+     "visit": {"hierarchyLevel": 0, "probability": 0.9,
+               "topCandidate": {"placeId": "ChIJ-example", "semanticType": "HOME", "probability": 0.8,
+                                "placeLocation": {"latLng": "52.5200066°, 13.4049540°"}}}},
+    {"startTime": "2024-03-10T10:30:00.000+01:00", "endTime": "2024-03-10T10:50:00.000+01:00",
+     "activity": {"start": {"latLng": "52.5200066°, 13.4049540°"}, "end": {"latLng": "52.5162746°, 13.3777041°"},
+                  "distanceMeters": 2100, "topCandidate": {"type": "WALKING", "probability": 0.95}}},
+    {"startTime": "2024-03-10T10:30:00.000+01:00", "endTime": "2024-03-10T12:30:00.000+01:00",
+     "timelinePath": [{"point": "52.5190000°, 13.3990000°", "time": "2024-03-10T10:36:00.000+01:00"},
+                      {"point": "52.5175000°, 13.3880000°", "time": "2024-03-10T10:43:00.000+01:00"}]}
+  ],
+  "rawSignals": [
+    {"position": {"LatLng": "52.5165000°, 13.3790000°", "accuracyMeters": 9, "altitudeMeters": 41.5,
+                  "source": "GPS", "timestamp": "2024-03-10T10:49:00.000+01:00", "speedMetersPerSecond": 1.3}},
+    {"wifiScan": {"deliveryTime": "2024-03-10T10:49:00.000+01:00", "devicesRecords": []}},
+    {"activityRecord": {"probableActivities": [{"type": "WALKING", "confidence": 0.9}], "timestamp": "2024-03-10T10:49:00.000+01:00"}}
+  ],
+  "userLocationProfile": {"frequentPlaces": []}
+}

@@ -14,7 +14,7 @@ enum ExportError: LocalizedError {
         switch self {
         case .passphraseRequired: return "This file is locked. Enter its passphrase."
         case .wrongPassphrase: return "Wrong passphrase (or the file is damaged)."
-        case .unreadable: return "This doesn't look like a Pos XY file."
+        case .unreadable: return "No location points found. Supported: Pos XY, Google Takeout / Timeline, GPX."
         case .cryptoFailure: return "Encryption failed."
         case .nothingToExport: return "No points recorded in that range."
         }
@@ -114,12 +114,17 @@ enum ExportCodec {
         return SymmetricKey(data: derived)
     }
 
-    /// Reads any of: locked `.pxy`, exported JSON, a bare JSON array, or a raw `.jsonl` day file.
+    /// Reads any of: locked `.pxy`, exported JSON, a bare JSON array, a raw `.jsonl` day file,
+    /// or a foreign format (Google Takeout / Timeline, GPX: see Importers).
     static func decodePoints(_ data: Data, passphrase: String?) throws -> [TrackPoint] {
         var json = data
         if isEncrypted(data) {
             guard let pw = passphrase, !pw.isEmpty else { throw ExportError.passphraseRequired }
             json = try decrypt(data, passphrase: pw)
+        }
+        if let foreign = Importers.importForeign(json) {
+            if foreign.points.isEmpty { throw ExportError.unreadable }
+            return foreign.points
         }
         let dec = TrackJSON.decoder()
         if let file = try? dec.decode(ExportFile.self, from: json) { return file.points }

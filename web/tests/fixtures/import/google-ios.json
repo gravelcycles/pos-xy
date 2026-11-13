@@ -1,0 +1,12 @@
+[
+  {"endTime": "2024-05-02T08:30:00.000-07:00", "startTime": "2024-05-02T07:00:00.000-07:00",
+   "visit": {"hierarchyLevel": "0", "topCandidate": {"probability": "0.91", "semanticType": "Home",
+             "placeID": "ChIJ-example", "placeLocation": "geo:37.759900,-122.414800"}, "probability": "0.95"}},
+  {"endTime": "2024-05-02T08:55:00.000-07:00", "startTime": "2024-05-02T08:30:00.000-07:00",
+   "activity": {"probability": "0.99", "end": "geo:37.789700,-122.397200",
+                "topCandidate": {"type": "in passenger vehicle", "probability": "0.92"},
+                "distanceMeters": "5100.0", "start": "geo:37.759900,-122.414800"}},
+  {"endTime": "2024-05-02T10:30:00.000-07:00", "startTime": "2024-05-02T08:30:00.000-07:00",
+   "timelinePath": [{"point": "geo:37.770000,-122.410000", "durationMinutesOffsetFromStartTime": "10"},
+                    {"point": "geo:37.780000,-122.402000", "durationMinutesOffsetFromStartTime": "18"}]}
+]

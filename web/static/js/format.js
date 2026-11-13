@@ -2,6 +2,8 @@
 // Spec: docs/FORMAT.md. Uses only Web Crypto + DecompressionStream (no libraries, no network).
 
 export const MAGIC = 'PXYENC01';
+import { importForeign } from './importers.js';
+
 const HEADER_LEN = 8 + 16 + 4;   // magic + salt + iterations
 const ACTIVITIES = new Set(['stationary', 'walking', 'running', 'cycling', 'driving', 'flying', 'unknown']);
 
@@ -69,22 +71,30 @@ export function normalizePoint(o) {
   return { t, lat, lon, alt: num(o.alt), acc: num(o.acc), spd: num(o.spd), crs: num(o.crs), act };
 }
 
-/** Reads a locked .pxy, an export JSON object, a bare JSON array, or JSON Lines. */
-export async function decodePoints(bytes, passphrase) {
+/**
+ * Reads a locked .pxy, an export JSON object, a bare JSON array, JSON Lines, or a foreign format
+ * (Google Takeout / Timeline, GPX — see importers.js). Pass `info` to learn which format it was.
+ */
+export async function decodePoints(bytes, passphrase, info = {}) {
   if (isLocked(bytes)) {
     if (!passphrase) throw new FormatError('passphrase', 'This file is locked. Enter its passphrase.');
     bytes = await decrypt(bytes, passphrase);
   }
   const text = new TextDecoder().decode(bytes);
+  info.kind = 'Pos XY';
   let raw = null;
-  try {
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) raw = parsed;
-    else if (parsed && parsed.format === 'pos-xy' && Array.isArray(parsed.points)) {
-      if (Number(parsed.version) > 1) console.warn('Newer pos-xy version; reading what we understand.');
-      raw = parsed.points;
-    }
-  } catch { /* maybe JSON Lines */ }
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { /* maybe JSON Lines or GPX */ }
+  const foreign = importForeign(text, parsed);
+  if (foreign) {
+    info.kind = foreign.kind;
+    raw = foreign.points;
+  } else if (Array.isArray(parsed)) {
+    raw = parsed;
+  } else if (parsed && parsed.format === 'pos-xy' && Array.isArray(parsed.points)) {
+    if (Number(parsed.version) > 1) console.warn('Newer pos-xy version; reading what we understand.');
+    raw = parsed.points;
+  }
   if (raw === null) {
     raw = [];
     for (const line of text.split('\n')) {
@@ -93,6 +103,8 @@ export async function decodePoints(bytes, passphrase) {
     }
   }
   const points = raw.map(normalizePoint).filter(Boolean);
-  if (points.length === 0) throw new FormatError('unreadable', "This doesn't look like a Pos XY file.");
+  if (points.length === 0) {
+    throw new FormatError('unreadable', "No location points found. Supported: Pos XY, Google Takeout / Timeline, GPX.");
+  }
   return points;
 }
