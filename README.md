@@ -58,7 +58,27 @@ It needs only Python 3 (included with Xcode's command line tools) and a modern b
 
 **Export from the iPhone:** tap **Export & AirDrop to Mac**, choose a range, keep **Lock with a passphrase** on, and tap **Create export file**, then **Send via AirDrop…** and pick your Mac. The file lands in `~/Downloads`.
 
-**View in the browser:** run `python3 web/serve.py`. Exports in `~/Downloads` appear in the left column; click one to load it, or drag files onto the page. Controls match the Mac app. ←/→ change day, Shift+←/→ jump 5 minutes, and space plays or pauses.
+**View in the browser:** run `python3 web/serve.py`. Exports in `~/Downloads` appear in the left column; click one to load it, or drag files onto the page. Controls match the Mac app. ←/→ change day, Shift+←/→ jump 5 minutes, and space plays or pauses. Press `?` for all shortcuts.
+
+The browser viewer also has:
+- **Overview** (`O`): all your movement on one map, places sized by time spent, all-time totals per activity, and a calendar shaded by distance per day. Click a day to open it.
+- **Where was I?** (`F`, or right-click the map): every visit near a spot across all your history. Click one to jump to that moment.
+- **Places**: stays are labelled *Home*, *Work* or *Place N*. Click ✎ to rename one ("Gym", "Mom's"). Names are kept in this browser only, and **Forget all** removes them.
+- **GPX export** of the day, or of everything, for other apps.
+- **Bookmarkable days**: the address bar keeps the day (`#2026-11-12`) or `#overview`.
+
+## Coming from Google Maps Timeline?
+
+Every viewer (web, Mac) opens Google's location exports directly. Nothing is uploaded; they're parsed locally.
+
+| Export | How to get it | File |
+| --- | --- | --- |
+| Google Maps Timeline, Android | Settings → Location → Location services → Timeline → *Export Timeline data* | `Timeline.json` |
+| Google Maps Timeline, iPhone | Google Maps → your profile → Settings → Personal content → *Export Timeline data* | `location-history.json` |
+| Classic Google Takeout | takeout.google.com → Location History | `Records.json` |
+| Any GPS watch / bike computer / app | Export as GPX | `*.gpx` |
+
+Drop the file on the web viewer (or open it in the Mac app), and it merges with your Pos XY data. Google's activity types (walking, in passenger vehicle, cycling…) become Pos XY activities.
 
 **View in the Mac app:** double-click the `.pxy` file, drag it onto the viewer window, or press ⌘O. You can open several exports at once; they're merged and de-duplicated. If they share a passphrase you only type it once.
 
@@ -72,6 +92,16 @@ It needs only Python 3 (included with Xcode's command line tools) and a modern b
 | Timeline list | Click a trip to zoom the map to it |
 
 The track up to the playhead is drawn in colour and the rest faded. Stays are purple circles. Flights and unknown gaps are dashed.
+
+## Places
+
+Pos XY finds the places you keep coming back to, on the device or viewer, from your own data:
+- **Clustering:** stays of 5 minutes or more within 150 m of each other become one place.
+- **Home** is where you spend the most night time (22:00–06:00), if it adds up to at least 4 hours.
+- **Work** is where you spend the most weekday office hours (Mon–Fri 9–17), with at least 4 hours over 2 or more days.
+- **Everything else** is *Place 1, 2, …* by total time. One-off short stops stay unnamed.
+
+You'll see the names in every timeline: the iPhone's Today view (e.g. "Home → Place 2 → Work → Home"), History, the Mac app, and the web viewer. It's the same algorithm in Swift (`Shared/Places.swift`) and JS (`web/static/js/places.js`), and a test keeps their output identical.
 
 ## Privacy
 
@@ -163,6 +193,7 @@ Shared/   models, activity segmentation, export encryption (used by both apps)
 iOS/      recorder app: CoreLocation + CoreMotion, storage, export, Face ID lock
 Mac/      viewer app: MapKit + OpenStreetMap tiles, timeline, trip list
 Config/   Info.plists and Mac sandbox entitlements
+Shared/   …also Places.swift (Home/Work detection) and Importers.swift (Google Timeline, GPX)
 web/      localhost web viewer: serve.py (stdlib only) + static/ (HTML, JS, vendored Leaflet) + tests/
 docs/     FORMAT.md spec, JSON Schema, test vectors
 ```

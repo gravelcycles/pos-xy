@@ -23,6 +23,15 @@ struct Place: Identifiable, Hashable {
     var label: Label?
     /// "Home", "Work", "Place N", or nil for places too minor to name.
     var name: String?
+
+    /// SF Symbol for the place.
+    var symbol: String {
+        switch label {
+        case .home: return "house.fill"
+        case .work: return "briefcase.fill"
+        case nil: return "mappin.circle.fill"
+        }
+    }
 }
 
 /// Clusters stays from all days into places and names them.
@@ -140,6 +149,15 @@ enum Places {
             if d <= radius && d < bestD { best = p; bestD = d }
         }
         return best
+    }
+
+    /// The named place a stay segment was at, if any.
+    static func place(for s: Segment, points: [TrackPoint], in places: [Place]) -> Place? {
+        guard s.type == .stationary, !places.isEmpty, s.last < points.count else { return nil }
+        var lat = 0.0, lon = 0.0
+        for i in s.first...s.last { lat += points[i].lat; lon += points[i].lon }
+        let n = Double(s.last - s.first + 1)
+        return nearest(places, lat: lat / n, lon: lon / n)
     }
 
     /// Detects places across many days. `days` are raw points grouped however; each group is

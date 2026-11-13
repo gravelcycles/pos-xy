@@ -33,6 +33,8 @@ final class TrackLibrary: ObservableObject {
     @Published var errorMessage: String?
     /// Bumped whenever the loaded data changes.
     @Published private(set) var version = 0
+    /// Home, Work and other places, detected in the background after each import.
+    @Published private(set) var places: [Place] = []
 
     private var cache: [Date: DayData] = [:]
     private var lastPassphrase: String?
@@ -91,6 +93,7 @@ final class TrackLibrary: ObservableObject {
         cache = [:]
         lastPassphrase = nil
         version += 1
+        places = []
     }
 
     private func merge(_ new: [TrackPoint], name: String) {
@@ -106,11 +109,25 @@ final class TrackLibrary: ObservableObject {
         fileNames.append(name)
         cache = [:]
         version += 1
+        refreshPlaces()
 
         let cal = Calendar.current
         let grouped = Dictionary(grouping: all) { cal.startOfDay(for: $0.t) }
         days = grouped.map { DayInfo(day: $0.key, pointCount: $0.value.count) }
             .sorted { $0.day > $1.day }
+    }
+
+    private func refreshPlaces() {
+        let snapshot = points
+        let forVersion = version
+        DispatchQueue.global(qos: .utility).async {
+            let cal = Calendar.current
+            let groups = Dictionary(grouping: snapshot) { cal.startOfDay(for: $0.t) }
+            let detected = Places.detect(days: groups.keys.sorted().compactMap { groups[$0] })
+            DispatchQueue.main.async {
+                if self.version == forVersion { self.places = detected }
+            }
+        }
     }
 
     /// Cleaned points and segments for one local calendar day (cached).

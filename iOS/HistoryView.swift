@@ -18,6 +18,7 @@ struct HistoryView: View {
                 for i in offsets { PointStore.shared.delete(dayKey: days[i]) }
                 days.remove(atOffsets: offsets)
                 recorder.refreshTodayCount()
+                PlaceCache.shared.refresh(force: true)
             }
         }
         .overlay {
@@ -38,6 +39,7 @@ struct HistoryView: View {
 }
 
 struct DayView: View {
+    @EnvironmentObject private var placeCache: PlaceCache
     let dayKey: String
     @State private var points: [TrackPoint] = []
     @State private var segments: [Segment] = []
@@ -70,7 +72,11 @@ struct DayView: View {
                             .frame(width: 30, height: 30)
                             .background(Circle().fill(seg.type.color))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(seg.type.label).font(.body.weight(.semibold))
+                            if let place = placeCache.place(for: seg, points: points), let name = place.name {
+                                Label(name, systemImage: place.symbol).font(.body.weight(.semibold))
+                            } else {
+                                Text(seg.type.label).font(.body.weight(.semibold))
+                            }
                             Text("\(seg.start.formatted(date: .omitted, time: .shortened)) – \(seg.end.formatted(date: .omitted, time: .shortened))")
                                 .font(.caption).foregroundStyle(.secondary)
                         }

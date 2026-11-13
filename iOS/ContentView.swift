@@ -5,6 +5,7 @@ import UIKit
 struct ContentView: View {
     @EnvironmentObject private var recorder: LocationRecorder
     @EnvironmentObject private var lock: AppLock
+    @EnvironmentObject private var placeCache: PlaceCache
     @State private var todayPoints: [TrackPoint] = []
     @State private var todaySegments: [Segment] = []
     @State private var confirmDelete = false
@@ -33,6 +34,7 @@ struct ContentView: View {
             }
             .navigationTitle("Pos XY")
             .task(id: recorder.todayCount / 5) { await reloadToday() }
+            .task { placeCache.refresh() }
         }
     }
 
@@ -100,6 +102,13 @@ struct ContentView: View {
             TrackSketch(points: todayPoints, segments: todaySegments)
                 .frame(height: 220)
                 .listRowInsets(EdgeInsets())
+            let stops = todaySegments.compactMap { placeCache.place(for: $0, points: todayPoints)?.name }
+                .reduce(into: [String]()) { if $0.last != $1 { $0.append($1) } }
+            if !stops.isEmpty {
+                Text(stops.joined(separator: " → "))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             let totals = Segmenter.totals(todaySegments).filter { $0.type != .stationary && $0.type != .unknown }
             ForEach(totals) { t in
                 HStack {
@@ -128,6 +137,7 @@ struct ContentView: View {
                 Button("Delete everything", role: .destructive) {
                     PointStore.shared.deleteAll()
                     recorder.refreshTodayCount()
+                    placeCache.refresh(force: true)
                     Task { await reloadToday() }
                 }
             }

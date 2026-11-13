@@ -16,12 +16,14 @@ struct PosXYApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var recorder = LocationRecorder.shared
     @StateObject private var lock = AppLock()
+    @StateObject private var placeCache = PlaceCache.shared
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(recorder)
                 .environmentObject(lock)
+                .environmentObject(placeCache)
         }
     }
 }
@@ -42,6 +44,7 @@ struct RootView: View {
             case .background: lock.lockIfEnabled()
             case .active:
                 recorder.refreshTodayCount()
+                PlaceCache.shared.refresh()
                 lock.unlockIfPending()
             default: break
             }

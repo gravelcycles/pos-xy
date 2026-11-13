@@ -12,7 +12,7 @@ struct ViewerView: View {
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)
         } detail: {
             if let day = selectedDay, library.days.contains(where: { $0.day == day }) {
-                DayDetailView(day: day, data: library.dayData(for: day), dataID: library.version)
+                DayDetailView(day: day, data: library.dayData(for: day), dataID: library.version, places: library.places)
                     .id("\(day.timeIntervalSince1970)-\(library.version)")
             } else {
                 EmptyStateView()
@@ -125,6 +125,7 @@ struct DayDetailView: View {
     let day: Date
     let data: DayData
     let dataID: Int
+    let places: [Place]
 
     @State private var time: Date
     @State private var playing = false
@@ -132,10 +133,11 @@ struct DayDetailView: View {
     @State private var follow = false
     @State private var focus = MapFocus()
 
-    init(day: Date, data: DayData, dataID: Int) {
+    init(day: Date, data: DayData, dataID: Int, places: [Place]) {
         self.day = day
         self.data = data
         self.dataID = dataID
+        self.places = places
         // Start at the end of the day so the whole track is drawn in colour.
         _time = State(initialValue: data.points.last?.t ?? day)
     }
@@ -193,7 +195,7 @@ struct DayDetailView: View {
                                  time: $time, playing: $playing, speed: $speed, follow: $follow)
             }
             Divider()
-            SegmentList(points: points, segments: data.segments, current: currentSegment) { seg in
+            SegmentList(points: points, segments: data.segments, places: places, current: currentSegment) { seg in
                 playing = false
                 time = seg.start
                 focus = MapFocus(id: focus.id + 1, first: seg.first, last: seg.last)
@@ -330,6 +332,7 @@ struct ActivityStrip: View {
 struct SegmentList: View {
     let points: [TrackPoint]
     let segments: [Segment]
+    let places: [Place]
     let current: Segment?
     let onSelect: (Segment) -> Void
     let onShowDay: () -> Void
@@ -357,7 +360,7 @@ struct SegmentList: View {
 
             Section("Timeline") {
                 ForEach(segments) { seg in
-                    SegmentRow(segment: seg, isCurrent: seg == current)
+                    SegmentRow(segment: seg, place: Places.place(for: seg, points: points, in: places), isCurrent: seg == current)
                         .contentShape(Rectangle())
                         .onTapGesture { onSelect(seg) }
                 }
@@ -369,6 +372,7 @@ struct SegmentList: View {
 
 struct SegmentRow: View {
     let segment: Segment
+    let place: Place?
     let isCurrent: Bool
 
     var body: some View {
@@ -378,7 +382,15 @@ struct SegmentRow: View {
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(segment.type.color))
             VStack(alignment: .leading, spacing: 2) {
-                Text(segment.type.label).font(.body.weight(.semibold))
+                if let name = place?.name {
+                    HStack(spacing: 4) {
+                        Image(systemName: place?.symbol ?? "mappin.circle.fill").font(.caption)
+                        Text(name).font(.body.weight(.semibold))
+                        Text("Stay").font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text(segment.type.label).font(.body.weight(.semibold))
+                }
                 Text("\(segment.start.formatted(date: .omitted, time: .shortened)) – \(segment.end.formatted(date: .omitted, time: .shortened))")
                     .font(.caption)
                     .foregroundStyle(.secondary)

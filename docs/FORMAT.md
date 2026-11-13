@@ -94,7 +94,7 @@ Example:
 - A change that alters the meaning of an existing key, or adds a required one, increments `version`.
 - Readers SHOULD read files with a higher `version` on a best-effort basis (warn, then read what they understand) rather than refusing them.
 
-**Lenient inputs:** for convenience, readers SHOULD also accept a bare JSON array of points, and JSON Lines (§4).
+**Lenient inputs:** for convenience, readers SHOULD also accept a bare JSON array of points, and JSON Lines (§4). The Pos XY viewers also import Google Maps Timeline / Takeout JSON and GPX. Those are converted to points on load and aren't part of this format (see `Shared/Importers.swift`).
 
 ## 4. Day file (`.jsonl`)
 
