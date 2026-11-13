@@ -20,7 +20,6 @@ import urllib.parse
 import webbrowser
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
-EXTENSIONS = (".pxy", ".json", ".jsonl")
 MAX_FILE = 512 * 1024 * 1024
 
 CSP = "; ".join([
@@ -36,21 +35,27 @@ CSP = "; ".join([
 ])
 
 
+FOREIGN_NAMES = ("timeline", "location-history", "records", "semantic")
+FOREIGN_MARKERS = (b'"semanticSegments"', b'"rawSignals"', b'"latitudeE7"', b'"timelinePath"', b'"visit"', b'"activity"')
+
+
 def looks_like_export(path: pathlib.Path) -> bool:
-    """`.pxy` files, plus `.json`/`.jsonl` that are named like ours or start like ours."""
+    """Pos XY exports (.pxy, .json, .jsonl), GPX files, and Google Maps Timeline / Takeout JSON."""
     name = path.name.lower()
-    if name.endswith(".pxy"):
+    if name.endswith((".pxy", ".gpx")):
         return True
     if not name.endswith((".json", ".jsonl")):
         return False
-    if name.startswith("posxy"):
+    if name.startswith(("posxy",) + FOREIGN_NAMES):
         return True
     try:
         with path.open("rb") as f:
-            head = f.read(256)
+            head = f.read(4096)
     except OSError:
         return False
-    return b'"pos-xy"' in head or (head.lstrip().startswith(b'{"t":') and b'"lat"' in head)
+    if b'"pos-xy"' in head or (head.lstrip().startswith(b'{"t":') and b'"lat"' in head):
+        return True
+    return any(m in head for m in FOREIGN_MARKERS)
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):

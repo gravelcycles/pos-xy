@@ -18,11 +18,14 @@
       <button id="nextDay" class="icon-btn" title="Next day (→)" aria-label="Next day">›</button>
     </div>
     <div class="actions">
-      <label class="btn" title="Open .pxy / .json files">
+      <button id="overviewBtn" class="btn" title="All-time overview (O)" aria-pressed="false">Overview</button>
+      <button id="findBtn" class="btn" title="Where was I? Click the map to find every visit near a spot (F). Right-click works too." aria-pressed="false">Where was I?</button>
+      <label class="btn" title="Open Pos XY exports, Google Takeout / Timeline JSON, or GPX">
         Open files…
-        <input id="fileInput" type="file" accept=".pxy,.json,.jsonl" multiple hidden>
+        <input id="fileInput" type="file" accept=".pxy,.json,.jsonl,.gpx,.xml" multiple hidden>
       </label>
-      <button id="forget" class="btn subtle" title="Remove all loaded data from this page">Forget all</button>
+      <button id="forget" class="btn subtle" title="Remove all loaded data and place names from this page">Forget all</button>
+      <button id="helpBtn" class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
     </div>
   </header>
 
@@ -51,11 +54,12 @@
           <div class="empty-card">
             <h2>Open a Pos XY export</h2>
             <p>AirDrop a file from the iPhone app. It lands in Downloads and shows up on the left. You can also drag files anywhere onto this page.</p>
+            <p class="muted small">Coming from Google Maps? Drop your Timeline export (<code>Timeline.json</code> or <code>location-history.json</code>) or a Takeout <code>Records.json</code> here. GPX files from watches and bike computers work too.</p>
             <p class="muted small">Everything stays in this browser tab. Files are decrypted here, and nothing is uploaded. Close the tab and it's gone.</p>
           </div>
         </div>
       </div>
-      <div class="timeline">
+      <div class="timeline" id="timeline">
         <canvas id="strip" aria-label="Day timeline: click or drag to scrub"></canvas>
         <div class="controls">
           <button id="play" class="icon-btn play" title="Play / pause (space)" aria-label="Play">▶</button>
@@ -73,21 +77,57 @@
     </section>
 
     <aside class="panel">
+      <section id="searchSection" hidden>
+        <div class="section-head">
+          <h2>Visits near here</h2>
+          <button id="closeSearch" class="link-btn">Close</button>
+        </div>
+        <p id="searchSummary" class="muted small"></p>
+        <ul id="searchResults" class="visits"></ul>
+      </section>
       <section>
         <div class="section-head">
-          <h2>Summary</h2>
-          <button id="showDay" class="link-btn">Show whole day</button>
+          <h2 id="summaryTitle">Summary</h2>
+          <span class="head-actions">
+            <button id="exportGpx" class="link-btn" title="Download as GPX for other apps">GPX</button>
+            <button id="showDay" class="link-btn">Show whole day</button>
+          </span>
         </div>
         <ul id="totals" class="totals"></ul>
       </section>
-      <section class="segments-section">
+      <section id="calendarSection" hidden>
+        <h2>Calendar</h2>
+        <div id="calendar" class="calendar"></div>
+      </section>
+      <section id="placesSection" hidden>
+        <h2>Places</h2>
+        <ul id="placesList" class="places"></ul>
+        <p class="muted small">Home and Work are guessed from where you spend nights and weekday office hours. Click ✎ to rename a place. Names are saved in this browser only.</p>
+      </section>
+      <section class="segments-section" id="segmentsSection">
         <h2>Timeline</h2>
         <ul id="segments" class="segments"></ul>
       </section>
     </aside>
   </main>
 
-  <div id="dropHint" class="drop-hint" hidden>Drop exports to open them</div>
+  <div id="dropHint" class="drop-hint" hidden>Drop files to open them: Pos XY, Google Timeline, or GPX</div>
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <dialog id="helpDialog">
+    <h2>Keyboard shortcuts</h2>
+    <table class="keys">
+      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Previous / next day</td></tr>
+      <tr><td><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></td><td>Back / forward 5 minutes</td></tr>
+      <tr><td><kbd>Space</kbd></td><td>Play / pause the day</td></tr>
+      <tr><td><kbd>O</kbd></td><td>All-time overview</td></tr>
+      <tr><td><kbd>F</kbd></td><td>Where was I? (then click the map)</td></tr>
+      <tr><td>Right-click map</td><td>Find every visit near that spot</td></tr>
+      <tr><td><kbd>?</kbd></td><td>This help</td></tr>
+    </table>
+    <p class="muted small">The address bar keeps the current day (e.g. <code>#2026-11-12</code>), so you can bookmark or go back.</p>
+    <div class="dialog-actions"><button id="helpClose" class="btn primary">Done</button></div>
+  </dialog>
 
   <dialog id="passDialog">
     <form method="dialog" id="passForm">
