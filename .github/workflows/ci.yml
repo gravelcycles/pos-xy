@@ -62,6 +62,7 @@ jobs:
             build 2>&1 | scripts/pretty.sh
 
       - name: Simulator smoke test (records a simulated drive)
+        timeout-minutes: 15
         run: scripts/ci-simulator-run.sh build/sim
 
       - name: Recorded data parses with the web viewer's reader
