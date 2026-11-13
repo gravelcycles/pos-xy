@@ -65,9 +65,14 @@ struct ContentView: View {
                         LabeledContent("Accuracy", value: "±\(Int(acc)) m")
                     }
                 }
-                LabeledContent("Activity") {
-                    Label(recorder.currentActivity.label, systemImage: recorder.currentActivity.symbol)
-                        .foregroundStyle(recorder.currentActivity.color)
+                HStack {
+                    Text("Activity")
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Image(systemName: recorder.currentActivity.symbol)
+                        Text(recorder.currentActivity.label)
+                    }
+                    .foregroundStyle(recorder.currentActivity == .unknown ? Color.secondary : recorder.currentActivity.color)
                 }
                 if recorder.interval > 0 {
                     LabeledContent("Next point") {

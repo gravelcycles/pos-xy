@@ -43,9 +43,12 @@ xcrun simctl boot "$UDID" 2>/dev/null || true
 xcrun simctl bootstatus "$UDID" -b
 log "Booted"
 xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 || true
+log "Installing"
 xcrun simctl install "$UDID" "$APP"
+log "Granting permissions"
 xcrun simctl privacy "$UDID" grant location-always "$BUNDLE_ID"
 xcrun simctl privacy "$UDID" grant motion "$BUNDLE_ID" || true
+log "Launching"
 
 # Start with recording on (the -key value pair lands in UserDefaults' argument domain).
 xcrun simctl launch "$UDID" "$BUNDLE_ID" -recorder.isRecording YES
