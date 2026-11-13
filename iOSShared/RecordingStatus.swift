@@ -1,8 +1,9 @@
 import Foundation
+import Security
 
 /// The small slice of recorder state that the Lock Screen widgets and the Control Center
-/// controls display. The app writes it to the App Group's UserDefaults; the widget extension
-/// only reads it.
+/// controls display. The app writes it to a keychain item in a shared access group; the widget
+/// extension only reads it.
 ///
 /// Privacy: deliberately no coordinates, place names or activity. The Lock Screen is visible to
 /// anyone holding the phone, so it only says whether recording is on and how many points today.
@@ -42,16 +43,38 @@ struct RecordingStatus: Codable, Equatable {
     }
 }
 
-/// App Group storage shared by the app and the widget extension.
+/// Storage shared by the app and the widget extension: one keychain item in a shared access group.
+///
+/// Why the keychain and not an App Group: a free Apple ID can't register App Group IDs from the
+/// command line, but every provisioning profile (free or paid) already allows `TEAMID.*` keychain
+/// groups, so this needs no developer-portal setup. The item never leaves the device
+/// (`ThisDeviceOnly`) and is readable after first unlock, so Lock Screen widgets can draw it.
 enum SharedStatusStore {
-    /// `group.$(APP_BUNDLE_ID)`, expanded into both Info.plists at build time.
-    static let groupID = Bundle.main.object(forInfoDictionaryKey: "PosXYAppGroup") as? String
+    /// `$(AppIdentifierPrefix)$(APP_BUNDLE_ID).shared`, expanded into both Info.plists at build time
+    /// and listed in both targets' `keychain-access-groups` entitlement.
+    static let accessGroup: String? = {
+        guard let group = Bundle.main.object(forInfoDictionaryKey: "PosXYKeychainGroup") as? String,
+              !group.isEmpty, !group.hasPrefix(".") else { return nil }  // "." = built without a team
+        return group
+    }()
 
-    private static let key = "recordingStatus.v1"
-    private static var defaults: UserDefaults? { groupID.flatMap { UserDefaults(suiteName: $0) } }
+    private static var itemQuery: [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "PosXYWidgetStatus",
+            kSecAttrAccount as String: "recordingStatus.v1",
+        ]
+        if let accessGroup { query[kSecAttrAccessGroup as String] = accessGroup }
+        return query
+    }
 
     static func read() -> RecordingStatus {
-        guard let data = defaults?.data(forKey: key),
+        var query = itemQuery
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
               let status = try? JSONDecoder().decode(RecordingStatus.self, from: data) else {
             return RecordingStatus()
         }
@@ -60,7 +83,13 @@ enum SharedStatusStore {
 
     static func write(_ status: RecordingStatus) {
         guard let data = try? JSONEncoder().encode(status) else { return }
-        defaults?.set(data, forKey: key)
+        let update = [kSecValueData as String: data] as CFDictionary
+        if SecItemUpdate(itemQuery as CFDictionary, update) == errSecItemNotFound {
+            var add = itemQuery
+            add[kSecValueData as String] = data
+            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            SecItemAdd(add as CFDictionary, nil)
+        }
     }
 }
 

@@ -5,10 +5,11 @@
 #   TEAM=ABCDE12345 DEVICE=<udid> scripts/deploy-iphone.sh
 #   BUNDLE_ID=com.yourname.posxy scripts/deploy-iphone.sh   # if the default ID is taken
 #   CONFIG=Debug scripts/deploy-iphone.sh                   # default Release (realistic battery use)
-#   APP_GROUPS=0 scripts/deploy-iphone.sh                   # sign without the App Group (widgets then show "Off")
+#   ENTITLEMENTS=0 scripts/deploy-iphone.sh                 # sign without entitlements (widgets then show "Off")
 #
 # BUNDLE_ID sets the project's APP_BUNDLE_ID, so the widget extension becomes $BUNDLE_ID.widgets and
-# the App Group group.$BUNDLE_ID. Never override PRODUCT_BUNDLE_IDENTIFIER: the extension would get the app's ID.
+# the shared keychain group TEAMID.$BUNDLE_ID.shared. Never override PRODUCT_BUNDLE_IDENTIFIER: the
+# extension would get the app's ID.
 #
 # One-time, by hand (Claude can't do these):
 #   • Xcode → Settings → Accounts → add your Apple ID (free works; apps then expire after 7 days).
@@ -38,19 +39,22 @@ say "Xcode $XCV"
 
 # --- Team ID -------------------------------------------------------------------------------------
 if [ -z "${TEAM:-}" ]; then
-  # Teams of the Apple IDs added in Xcode → Settings → Accounts (prefers a paid team).
-  TEAM=$(defaults export com.apple.dt.Xcode - 2>/dev/null | python3 -c '
-import plistlib, sys
-try:
-    prefs = plistlib.loads(sys.stdin.buffer.read())
-except Exception:
-    sys.exit()
+  # Teams of the Apple IDs added in Xcode → Settings → Accounts (prefers a paid team). Xcode caches
+  # them in its own prefs; xcodebuild caches them in com.apple.dt.xcodebuild, sometimes only there.
+  TEAM=$(python3 -c '
+import plistlib, subprocess
 teams = []
-for key in ("IDEProvisioningTeamByIdentifier", "IDEProvisioningTeams"):
-    for account in (prefs.get(key) or {}).values():
-        teams += [t for t in account if isinstance(t, dict) and t.get("teamID")]
+for domain in ("com.apple.dt.Xcode", "com.apple.dt.xcodebuild"):
+    try:
+        out = subprocess.run(["defaults", "export", domain, "-"], capture_output=True).stdout
+        prefs = plistlib.loads(out)
+    except Exception:
+        continue
+    for key in ("IDEProvisioningTeamByIdentifier", "IDEProvisioningTeams"):
+        for account in (prefs.get(key) or {}).values():
+            teams += [t for t in account if isinstance(t, dict) and t.get("teamID")]
 teams.sort(key=lambda t: bool(t.get("isFreeProvisioningTeam")))
-print(teams[0]["teamID"] if teams else "")' || true)
+print(teams[0]["teamID"] if teams else "")' 2>/dev/null || true)
 fi
 if [ -z "${TEAM:-}" ]; then
   # Fallback: the OU field of an "Apple Development" certificate is the team ID.
@@ -98,13 +102,13 @@ build() {   # extra build settings as arguments
     -allowProvisioningUpdates "$@" build 2>&1 | tee "$LOG" | scripts/pretty.sh
 }
 say "Building PosXY ($CONFIG) as $BUNDLE_ID"
-if [ "${APP_GROUPS:-1}" = 0 ]; then
+if [ "${ENTITLEMENTS:-1}" = 0 ]; then
   build CODE_SIGN_ENTITLEMENTS=
 elif ! build; then
-  # Some Apple ID setups can't provision App Groups. Everything except the widgets' live status
-  # works without it, so retry once without the entitlement rather than failing.
-  if grep -qiE "app ?groups?|application-groups" "$LOG"; then
-    say "Signing with the App Group failed; retrying without it (widgets will show 'Off')"
+  # The only entitlement is the shared keychain group, which every profile should allow. If signing
+  # still rejects it, everything except the widgets' live status works without it, so retry once.
+  if grep -qiE "entitlement|keychain-access-groups" "$LOG"; then
+    say "Signing with the shared keychain group failed; retrying without it (widgets will show 'Off')"
     build CODE_SIGN_ENTITLEMENTS=
   else
     die "Build failed (full log: $LOG)"

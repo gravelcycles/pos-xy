@@ -3,7 +3,7 @@ import SwiftUI
 import WidgetKit
 
 /// Lock Screen / Home Screen status widget plus Control Center, Lock Screen and Action button
-/// controls. Everything here reads `RecordingStatus` from the App Group; the controls' intents
+/// controls. Everything here reads `RecordingStatus` from the shared keychain item; the controls' intents
 /// run in the app (see iOSShared/ControlIntents.swift). No networking, like the rest of Pos XY.
 @main
 struct PosXYWidgets: WidgetBundle {

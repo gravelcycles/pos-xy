@@ -27,7 +27,7 @@ You need a Mac with **Xcode** (free, from the App Store). There's no way to put 
 
 **Or in Xcode:**
 1. Open `PosXY.xcodeproj` in Xcode.
-2. Select the **PosXY** target, open **Signing & Capabilities**, and pick your Apple ID under **Team** (Xcode → Settings → Accounts to add one). Do the same for the **PosXYWidgets** target. If Xcode says the bundle ID is taken, change the project's `APP_BUNDLE_ID` build setting (default `io.github.gravelcycles.posxy`) to anything unique; the widget extension and App Group follow it.
+2. Select the **PosXY** target, open **Signing & Capabilities**, and pick your Apple ID under **Team** (Xcode → Settings → Accounts to add one). Do the same for the **PosXYWidgets** target. If Xcode says the bundle ID is taken, change the project's `APP_BUNDLE_ID` build setting (default `io.github.gravelcycles.posxy`) to anything unique; the widget extension follows it.
 3. Plug in your iPhone (or use the same Wi-Fi), pick it as the run destination, and press **⌘R**.
 4. First time only, on the iPhone:
    - Turn on **Settings → Privacy & Security → Developer Mode** and restart.
@@ -157,7 +157,7 @@ It's heuristic. Trains usually show up as **Drive**.
 
 - **Controls:** *Record Location* (on/off) and *Pause for 1 Hour* (tap again to resume). Add them to **Control Center** (swipe down → hold → Add a Control → Pos XY), to the **Lock Screen**'s bottom buttons (hold the Lock Screen → Customize → Lock Screen → tap a button), or to the **Action button** (Settings → Action Button → Controls → Pos XY).
 - **Recording Status widget:** on the Lock Screen (circular, rectangular, or the line above the clock) and the Home Screen (small, with a Record/Stop button). It shows whether Pos XY is recording or paused, how many points it took today, and how long ago the last fix was.
-- The widgets show no coordinates or place names, since anyone holding the phone can see the Lock Screen. The app shares just that status with its widget extension through an App Group on the iPhone.
+- The widgets show no coordinates or place names, since anyone holding the phone can see the Lock Screen. The app shares just that status with its widget extension through a keychain item that never leaves the iPhone.
 
 ## Recording frequency
 

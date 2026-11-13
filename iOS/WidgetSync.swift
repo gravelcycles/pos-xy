@@ -1,7 +1,7 @@
 import Foundation
 import WidgetKit
 
-/// Publishes the recorder's status to the App Group and asks iOS to redraw the Lock Screen
+/// Publishes the recorder's status to the shared keychain item and asks iOS to redraw the Lock Screen
 /// widgets and Control Center controls.
 ///
 /// State changes (start, stop, pause, resume) are written and reloaded right away. New points
