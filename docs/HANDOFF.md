@@ -36,7 +36,7 @@ This was written by the cloud Claude session that built the project, for a **loc
 
 **Not done / needs the owner:**
 - **TestFlight:** `.github/workflows/testflight.yml` exists but has never run. It needs the paid Apple Developer Program plus 4 repo secrets; setup is in `docs/DISTRIBUTION.md`. The first run may need a small signing tweak.
-- **Real devices:** nothing has run on a real iPhone or Mac yet, only on CI runners and simulators.
+- **Real devices:** installed on the owner's iPhone 12 Pro (iOS 18.7.3) on 2026-11-13 with Xcode 26.6 and a free Apple ID (team `D5STMWZ849`, Personal Team). The app and widget extension both sign, but nobody has run the section 5 checklist yet. The Mac viewer still hasn't run on a real Mac.
 
 ## 3. Deploying to the owner's iPhone
 
@@ -50,7 +50,7 @@ Then:
 scripts/deploy-iphone.sh
 ```
 The script:
-1. finds the team ID (from the OU field of the "Apple Development" certificate) and the single paired iPhone (via `xcrun devicectl`);
+1. finds the team ID (from the account teams Xcode and xcodebuild cache in their prefs, else from the "Apple Development" certificate) and the single paired iPhone (via `xcrun devicectl`). If `xcode-select` points at the Command Line Tools, it uses the newest `/Applications/Xcode*.app` instead;
 2. builds Release with `-allowProvisioningUpdates`, so Xcode creates the signing profile;
 3. installs and launches the app.
 
@@ -60,7 +60,8 @@ Likely snags and fixes:
 
 | Symptom | Fix |
 | --- | --- |
-| "No signing team found" | No Apple Development certificate yet. Open `PosXY.xcodeproj`, select target PosXY → Signing & Capabilities → choose the team (this creates the certificate). Re-run. |
+| "No signing team found" | Xcode hasn't cached the account's teams yet. Run any `xcodebuild … -allowProvisioningUpdates build` once (it fails, but writes the team to `com.apple.dt.xcodebuild`), or pass `TEAM=…`. |
+| Profile "doesn't match the entitlements file's value for … application-groups" | A free Apple ID can't register App Group IDs from xcodebuild. That's why the widget status uses a shared keychain group (`keychain-access-groups`) instead; don't reintroduce an App Group. |
 | "Bundle identifier is not available" (free accounts must be globally unique) | `BUNDLE_ID=com.<something-unique>.posxy scripts/deploy-iphone.sh` |
 | Installs but won't launch: "Untrusted Developer" | iPhone → Settings → General → VPN & Device Management → trust the Apple ID. Then open the app. |
 | Device not found | Unlock the phone, re-plug, check Developer Mode. `xcrun devicectl list devices` should show it as paired. |

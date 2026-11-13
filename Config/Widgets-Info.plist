@@ -7,7 +7,7 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
-	<key>PosXYAppGroup</key>
-	<string>group.$(APP_BUNDLE_ID)</string>
+	<key>PosXYKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)$(APP_BUNDLE_ID).shared</string>
 </dict>
 </plist>
