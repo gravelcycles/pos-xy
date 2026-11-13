@@ -10,6 +10,8 @@ struct DayInfo: Identifiable, Hashable {
 struct DayData {
     let points: [TrackPoint]
     let segments: [Segment]
+    /// Silence longer than this is a gap (depends on the recording frequency).
+    let gap: TimeInterval
 }
 
 struct LockedFile: Identifiable {
@@ -117,7 +119,7 @@ final class TrackLibrary: ObservableObject {
         let next = Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day.addingTimeInterval(86_400)
         let lo = lowerBound(day), hi = lowerBound(next)
         let cleaned = Segmenter.clean(Array(points[lo..<hi]))
-        let data = DayData(points: cleaned, segments: Segmenter.segments(cleaned))
+        let data = DayData(points: cleaned, segments: Segmenter.segments(cleaned), gap: Segmenter.gapThreshold(cleaned))
         cache[day] = data
         return data
     }

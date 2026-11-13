@@ -45,16 +45,31 @@ sleep 75
 xcrun simctl location "$UDID" start --speed=1.4 --interval=2 \
   37.7955,-122.3937 37.7968,-122.3950 37.7980,-122.3975
 sleep 45
+DATA=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)
+TRACKS="$DATA/Library/Application Support/Tracks"
+count() { cat "$TRACKS"/*.jsonl 2>/dev/null | wc -l | tr -d ' '; }
+CONTINUOUS=$(count)
+echo "Continuous mode recorded: $CONTINUOUS points"
+[ "$CONTINUOUS" -gt 10 ] || { echo "::error::Continuous mode recorded only $CONTINUOUS points"; exit 1; }
+
+# Timed mode: one point every 20 s while walking on. Expect ~4 points in 75 s, not dozens.
+xcrun simctl terminate "$UDID" "$BUNDLE_ID" || true
+xcrun simctl launch "$UDID" "$BUNDLE_ID" -recorder.isRecording YES -recorder.intervalSeconds 20
+sleep 3
+xcrun simctl location "$UDID" start --speed=1.4 --interval=1 \
+  37.7980,-122.3975 37.8000,-122.4010 37.8020,-122.4050
+sleep 75
+TIMED=$(( $(count) - CONTINUOUS ))
+echo "Timed mode (every 20 s for 75 s) recorded: $TIMED points"
+if [ "$TIMED" -lt 2 ] || [ "$TIMED" -gt 8 ]; then
+  echo "::error::Timed mode recorded $TIMED points; expected 2-8"; exit 1
+fi
 xcrun simctl location "$UDID" clear || true
 
-# Relaunch so the "Today" sketch reloads with everything recorded.
+# Back to continuous for the screenshot (relaunch so "Today" reloads everything).
 xcrun simctl terminate "$UDID" "$BUNDLE_ID" || true
-xcrun simctl launch "$UDID" "$BUNDLE_ID"
+xcrun simctl launch "$UDID" "$BUNDLE_ID" -recorder.isRecording YES -recorder.intervalSeconds 0
 sleep 6
 xcrun simctl io "$UDID" screenshot "$OUT/iphone-today.png"
-
-DATA=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)
-cp "$DATA"/Library/Application\ Support/Tracks/*.jsonl "$OUT/" 2>/dev/null || true
-COUNT=$(cat "$OUT"/*.jsonl 2>/dev/null | wc -l | tr -d ' ')
-echo "Recorded points: $COUNT"
-[ "$COUNT" -gt 10 ] || { echo "::error::The app recorded only $COUNT points"; exit 1; }
+cp "$TRACKS"/*.jsonl "$OUT/" 2>/dev/null || true
+echo "Total recorded: $(count) points"

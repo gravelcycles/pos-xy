@@ -13,7 +13,16 @@ export const ACTIVITY = {
 };
 export const ACTIVITY_ORDER = ['stationary', 'walking', 'running', 'cycling', 'driving', 'flying', 'unknown'];
 export const isDashed = (type) => type === 'flying' || type === 'unknown';
-export const GAP_THRESHOLD = 5 * 60;
+export const MINIMUM_GAP = 5 * 60;
+
+/** Same rule as Segmenter.gapThreshold in Swift: max(5 min, 2.5 × median spacing), capped at 6 h. */
+export function gapThreshold(p) {
+  if (p.length < 3) return MINIMUM_GAP;
+  const dts = [];
+  for (let i = 1; i < p.length; i++) dts.push(p[i].t - p[i - 1].t);
+  dts.sort((a, b) => a - b);
+  return Math.min(Math.max(MINIMUM_GAP, dts[Math.floor(dts.length / 2)] * 2.5), 6 * 3600);
+}
 
 export function distance(a, b) {
   const r = 6371000;
@@ -43,13 +52,13 @@ export function clean(raw) {
   return out.filter((_, i) => keep[i]);
 }
 
-export function speeds(p) {
+export function speeds(p, gap = gapThreshold(p)) {
   const n = p.length, s = new Array(n).fill(0);
   for (let i = 0; i < n; i++) {
     if (p[i].spd != null && p[i].spd >= 0) { s[i] = p[i].spd; continue; }
     let lo = i, hi = i;
-    if (i > 0 && p[i].t - p[i - 1].t <= GAP_THRESHOLD) lo = i - 1;
-    if (i < n - 1 && p[i + 1].t - p[i].t <= GAP_THRESHOLD) hi = i + 1;
+    if (i > 0 && p[i].t - p[i - 1].t <= gap) lo = i - 1;
+    if (i < n - 1 && p[i + 1].t - p[i].t <= gap) hi = i + 1;
     const dt = p[hi].t - p[lo].t;
     s[i] = dt > 0 ? distance(p[lo], p[hi]) / dt : 0;
   }
@@ -121,13 +130,14 @@ function runs(edges) {
 export function segments(p) {
   const n = p.length;
   if (n < 2) return [];
-  const v = speeds(p);
+  const gap = gapThreshold(p);
+  const v = speeds(p, gap);
   const labels = smooth(p.map((pt, i) => pointLabel(pt, v[i])), p);
   const edge = new Array(n - 1), isGap = new Array(n - 1).fill(false), edgeDist = new Array(n - 1);
   for (let i = 0; i < n - 1; i++) {
     const dt = p[i + 1].t - p[i].t, d = distance(p[i], p[i + 1]);
     edgeDist[i] = d;
-    if (dt > GAP_THRESHOLD) {
+    if (dt > gap) {
       isGap[i] = true;
       edge[i] = d < 300 ? 'stationary' : (d / dt > 50 ? 'flying' : 'unknown');
     } else {

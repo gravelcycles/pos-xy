@@ -16,7 +16,7 @@ struct ContentView: View {
             List {
                 recordingSection
                 todaySection
-                powerSection
+                FrequencySection()
                 Section {
                     NavigationLink {
                         HistoryView()
@@ -69,6 +69,15 @@ struct ContentView: View {
                     Label(recorder.currentActivity.label, systemImage: recorder.currentActivity.symbol)
                         .foregroundStyle(recorder.currentActivity.color)
                 }
+                if recorder.interval > 0 {
+                    LabeledContent("Next point") {
+                        if recorder.isTakingPoint {
+                            Text("Getting a GPS fix…")
+                        } else if let next = recorder.nextPointAt {
+                            Text(next, style: .relative)
+                        }
+                    }
+                }
                 if recorder.isLowPower {
                     Label("Standing still: GPS resting", systemImage: "leaf")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -95,16 +104,6 @@ struct ContentView: View {
                         .foregroundStyle(.secondary).monospacedDigit()
                 }
             }
-        }
-    }
-
-    private var powerSection: some View {
-        Section {
-            Picker("GPS mode", selection: $recorder.powerMode) {
-                ForEach(LocationRecorder.PowerMode.allCases) { Text($0.title).tag($0) }
-            }
-        } footer: {
-            Text("Smart rests the GPS while you're standing still and saves battery. Always precise records the most detail and is best on flights.")
         }
     }
 

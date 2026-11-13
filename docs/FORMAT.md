@@ -27,6 +27,7 @@ A JSON Schema for §2–§3 is in [`pos-xy.schema.json`](pos-xy.schema.json).
 - **Time** is Unix time: seconds since 1970-01-01T00:00:00Z, as a JSON number. Fractions are allowed (writers SHOULD keep at most millisecond precision). Time zones are not stored. Readers group points into days using the viewer's local time zone.
 - **Coordinates** are WGS 84 decimal degrees. Writers SHOULD round latitude and longitude to 6 decimal places (about 11 cm).
 - **JSON** is UTF-8, RFC 8259. Writers MUST NOT emit `NaN` or `Infinity`.
+- **Sampling** is irregular. The phone can record continuously (seconds apart) or on a schedule (every N minutes, §README "Recording frequency"). Readers MUST NOT assume a fixed spacing between points.
 - **Absent vs. null:** writers MUST omit unknown optional fields rather than writing `null`. Readers MUST treat `null` the same as absent.
 
 ## 2. Point

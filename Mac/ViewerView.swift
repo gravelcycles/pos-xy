@@ -167,7 +167,7 @@ struct DayDetailView: View {
         guard i + 1 < points.count else { return CLLocationCoordinate2D(latitude: a.lat, longitude: a.lon) }
         let b = points[i + 1]
         let dt = b.t.timeIntervalSince(a.t)
-        guard dt > 0, dt <= Segmenter.gapThreshold else {
+        guard dt > 0, dt <= data.gap else {
             return CLLocationCoordinate2D(latitude: a.lat, longitude: a.lon)
         }
         let f = min(max(time.timeIntervalSince(a.t) / dt, 0), 1)

@@ -113,6 +113,20 @@ GPS is receive-only, so it works in airplane mode and on flights with no network
 
 It's heuristic. Trains usually show up as **Drive**.
 
+## Recording frequency
+
+On the phone, **Frequency → Record a point**:
+
+| Setting | What it does | Battery |
+| --- | --- | --- |
+| **Continuously** (default) | A point about every 15 m you move. Best walk/bike/drive detection. | Highest while moving. Smart mode rests the GPS when you're still. |
+| **Every minute / 5 minutes / 15 minutes / hour** | One GPS point on that schedule. | Much lower: the GPS is off between points. |
+| **Custom…** | Any interval from 10 seconds to 12 hours. | |
+
+Between timed points the app keeps only a coarse location session open (no GPS). That costs very little, and it's what lets iOS wake the app on time. For each point it turns the GPS on until it gets a good fix (up to 90 s, which helps in airplane mode), saves the best one, and turns it off again.
+
+The viewers adapt automatically. A silence only counts as a gap when it's longer than 2.5× the typical spacing between points, so a 15-minute schedule still gives walk/drive/flight segments rather than a row of unknown gaps. `web/tests` checks the same day sampled every 1, 5, 15 and 60 minutes against the Swift results.
+
 ## Battery
 
 Smart mode uses full GPS while you're moving (a point every 15 m) and drops to coarse location when the motion chip says you're stationary. Most of the battery cost is GPS time while moving, so it depends on how much you travel. iOS also relaunches the app after a reboot once you've moved about 500 m. **Don't force-quit it** from the app switcher: that stops background recording until you open it again.

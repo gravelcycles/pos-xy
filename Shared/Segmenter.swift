@@ -34,8 +34,19 @@ struct ActivityTotal: Identifiable, Hashable {
 ///    into their neighbours.
 /// 5. Runs recorded without motion data are re-classified from their speed profile.
 enum Segmenter {
-    /// Silence longer than this breaks the line.
-    static let gapThreshold: TimeInterval = 5 * 60
+    /// Silence longer than this always counts as a gap (for continuous recording).
+    static let minimumGap: TimeInterval = 5 * 60
+
+    /// Silence longer than this breaks the line. Adapts to the recording frequency: with a point
+    /// every 15 minutes, 15 minutes of silence is normal, not a gap.
+    /// Rule: max(5 min, 2.5 × median spacing), capped at 6 h.
+    static func gapThreshold(_ p: [TrackPoint]) -> TimeInterval {
+        guard p.count >= 3 else { return minimumGap }
+        var dts = (1..<p.count).map { p[$0].t.timeIntervalSince(p[$0 - 1].t) }
+        dts.sort()
+        let median = dts[dts.count / 2]
+        return min(max(minimumGap, median * 2.5), 6 * 3600)
+    }
 
     // MARK: - Cleaning
 
@@ -70,7 +81,8 @@ enum Segmenter {
 
     /// Best speed estimate (m/s) for each point: GPS doppler speed if present, otherwise
     /// distance/time across the neighbouring points.
-    static func speeds(_ p: [TrackPoint]) -> [Double] {
+    static func speeds(_ p: [TrackPoint], gap: TimeInterval? = nil) -> [Double] {
+        let gapThreshold = gap ?? self.gapThreshold(p)
         let n = p.count
         var s = [Double](repeating: 0, count: n)
         for i in 0..<n {
@@ -168,7 +180,8 @@ enum Segmenter {
     static func segments(_ p: [TrackPoint]) -> [Segment] {
         let n = p.count
         guard n >= 2 else { return [] }
-        let v = speeds(p)
+        let gapThreshold = self.gapThreshold(p)
+        let v = speeds(p, gap: gapThreshold)
         let labels = smooth((0..<n).map { pointLabel(p[$0], speed: v[$0]) }, p)
 
         // Label each edge (i -> i+1).

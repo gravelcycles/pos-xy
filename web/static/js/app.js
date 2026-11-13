@@ -1,6 +1,6 @@
 // Pos XY web viewer. Everything happens in this tab: files are decrypted here and kept in memory.
 import { decodePoints, isLocked, FormatError } from './format.js';
-import { ACTIVITY, ACTIVITY_ORDER, isDashed, clean, segments as segmentDay, totals, GAP_THRESHOLD } from './segmenter.js';
+import { ACTIVITY, ACTIVITY_ORDER, isDashed, clean, segments as segmentDay, totals, gapThreshold } from './segmenter.js';
 
 const $ = (id) => document.getElementById(id);
 const ICON = { stationary: '📍', walking: '🚶', running: '🏃', cycling: '🚲', driving: '🚗', flying: '✈️', unknown: '❔' };
@@ -120,7 +120,7 @@ function markerPosition(c) {
   const a = pts[c], b = pts[c + 1];
   if (!b) return latlng(a);
   const dt = b.t - a.t;
-  if (dt <= 0 || dt > GAP_THRESHOLD) return latlng(a);
+  if (dt <= 0 || dt > state.day.gap) return latlng(a);
   const f = Math.min(Math.max((state.time - a.t) / dt, 0), 1);
   return [a.lat + (b.lat - a.lat) * f, a.lon + (b.lon - a.lon) * f];
 }
@@ -270,7 +270,7 @@ function merge(newPoints, name) {
 function dayData(key) {
   if (state.dayCache.has(key)) return state.dayCache.get(key);
   const pts = clean(state.points.filter((p) => dayKeyOf(p.t) === key));
-  const data = { key, points: pts, segments: segmentDay(pts) };
+  const data = { key, points: pts, segments: segmentDay(pts), gap: gapThreshold(pts) };
   state.dayCache.set(key, data);
   return data;
 }
