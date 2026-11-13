@@ -32,7 +32,7 @@ You need a Mac with **Xcode** (free, from the App Store). There's no way to put 
 4. First time only, on the iPhone:
    - Turn on **Settings → Privacy & Security → Developer Mode** and restart.
    - Allow the developer certificate under **Settings → General → VPN & Device Management**.
-5. In the app, turn on **Record my location**. When iOS asks, allow location. Later, choose **Change to Always Allow** (or set it in Settings → Pos XY → Location → Always). Allow Motion & Fitness too, so it can tell walking from driving.
+5. In the app, turn on **Record my location**. Choose **Allow While Using App**; iOS then asks right away whether to **Change to Always Allow**, so choose that. If you missed it, tap **Open Settings** in the app (or Settings → Apps → Pos XY → Location) and pick **Always**. Allow Motion & Fitness too, so it can tell walking from driving.
 
 > **Free Apple ID:** apps you sideload expire after **7 days**. Re-run from Xcode to refresh. Your data is kept as long as you don't delete the app. A paid developer account ($99/yr) makes it last a year.
 
