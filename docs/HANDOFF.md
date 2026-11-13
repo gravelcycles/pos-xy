@@ -71,7 +71,7 @@ GUI fallback: open `PosXY.xcodeproj`, choose your team on the PosXY target, sele
 
 **In the app, the first time:**
 1. Turn on **Record my location** and choose *Allow While Using App*.
-2. Later, iOS asks to upgrade the permission; choose **Change to Always Allow**. Or set it in Settings → Pos XY → Location → Always, with Precise on.
+2. iOS then asks right away to upgrade the permission; choose **Change to Always Allow**. (The app asks for While Using first and Always second, because asking for Always first only gets a deferred upgrade prompt.) Or tap **Open Settings** in the app and pick Always, with Precise on.
 3. Allow **Motion & Fitness**.
 
 **Mac viewer:** `scripts/install-mac-viewer.sh`, or `python3 web/serve.py` for the browser viewer.

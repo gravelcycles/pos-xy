@@ -98,8 +98,14 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         isRecording = true
         defaults.set(true, forKey: Keys.recording)
         switch manager.authorizationStatus {
-        case .notDetermined, .authorizedWhenInUse:
-            manager.requestAlwaysAuthorization()
+        case .notDetermined:
+            // Two steps on purpose. Asking for Always up front only gets "Allow While Using App"
+            // plus a provisional upgrade that iOS offers hours later, in the background, if ever.
+            // Asking for While Using first lets locationManagerDidChangeAuthorization ask for
+            // Always the moment it's granted, and iOS then shows "Change to Always Allow" at once.
+            manager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse:
+            manager.requestAlwaysAuthorization()   // iOS shows the upgrade prompt only once per install
         default:
             break
         }
@@ -333,7 +339,11 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let previous = authorization
         authorization = manager.authorizationStatus
+        if isRecording && previous == .notDetermined && authorization == .authorizedWhenInUse {
+            manager.requestAlwaysAuthorization()   // step two of the request in start()
+        }
         preciseAllowed = manager.accuracyAuthorization == .fullAccuracy
         if isRecording && (authorization == .authorizedAlways || authorization == .authorizedWhenInUse) {
             beginUpdates()
