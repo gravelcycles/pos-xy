@@ -20,7 +20,7 @@ jobs:
       TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || 'io.github.gravelcycles.posxy' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Check setup
         run: |
@@ -81,7 +81,7 @@ jobs:
         if: always()
         run: rm -rf "$RUNNER_TEMP/keys"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: failure()
         with:
           name: testflight-logs

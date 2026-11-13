@@ -86,5 +86,7 @@ xcrun simctl terminate "$UDID" "$BUNDLE_ID" || true
 xcrun simctl launch "$UDID" "$BUNDLE_ID" -recorder.isRecording YES -recorder.intervalSeconds 0
 sleep 6
 xcrun simctl io "$UDID" screenshot "$OUT/iphone-today.png"
+sleep 5
+xcrun simctl io "$UDID" screenshot "$OUT/iphone-today-later.png"
 cp "$TRACKS"/*.jsonl "$OUT/" 2>/dev/null || true
 echo "Total recorded: $(count) points"
