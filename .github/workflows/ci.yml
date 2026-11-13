@@ -69,6 +69,18 @@ jobs:
         run: |
           for f in build/sim/*.jsonl; do echo "== $f"; node web/tests/parity.mjs "$f"; done
 
+      - name: Mac viewer smoke test (open a week of data, screenshot)
+        run: |
+          mkdir -p build/sim
+          APP="$PWD/build/Build/Products/Release/PosXYViewer.app"
+          open -a "$APP" "$PWD/web/tests/fixtures/week.json"
+          sleep 20     # launch, load, segment, fetch map tiles
+          osascript -e 'tell application "PosXYViewer" to activate' || true
+          sleep 3
+          screencapture -x build/sim/mac-viewer.png || echo "::warning::screencapture failed"
+          pgrep -x PosXYViewer >/dev/null || { echo "::error::Mac viewer is not running (crashed?)"; exit 1; }
+          osascript -e 'tell application "PosXYViewer" to quit' || pkill -x PosXYViewer || true
+
       - name: Package
         run: |
           mkdir -p dist
