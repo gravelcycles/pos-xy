@@ -23,8 +23,11 @@ You need a Mac with **Xcode** (free, from the App Store). There's no way to put 
 
 ### iPhone app
 
+**Quickest:** plug in the iPhone and run `scripts/deploy-iphone.sh`. It finds your team and phone, builds, signs, installs and launches. If the bundle ID is taken: `BUNDLE_ID=com.yourname.posxy scripts/deploy-iphone.sh`.
+
+**Or in Xcode:**
 1. Open `PosXY.xcodeproj` in Xcode.
-2. Select the **PosXY** target, open **Signing & Capabilities**, and pick your Apple ID under **Team** (Xcode → Settings → Accounts to add one). If Xcode says the bundle ID is taken, change `io.github.gravelcycles.posxy` to anything unique.
+2. Select the **PosXY** target, open **Signing & Capabilities**, and pick your Apple ID under **Team** (Xcode → Settings → Accounts to add one). Do the same for the **PosXYWidgets** target. If Xcode says the bundle ID is taken, change the project's `APP_BUNDLE_ID` build setting (default `io.github.gravelcycles.posxy`) to anything unique; the widget extension and App Group follow it.
 3. Plug in your iPhone (or use the same Wi-Fi), pick it as the run destination, and press **⌘R**.
 4. First time only, on the iPhone:
    - Turn on **Settings → Privacy & Security → Developer Mode** and restart.
@@ -111,6 +114,7 @@ You'll see the names in every timeline: the iPhone's Today view (e.g. "Home → 
 - History is excluded from iCloud and Finder backups. Deleting the app deletes it.
 - Optional **Require Face ID** lock for the app's screen. Recording continues while it's locked.
 - **Delete all history** wipes everything.
+- Lock Screen widgets and controls only show on/paused/off, today's point count and the last fix time. No locations.
 
 **Export files**
 - `.pxy` = AES-256-GCM, key from your passphrase via PBKDF2-HMAC-SHA256 with 600,000 rounds and a random salt. The header is authenticated, so tampering is detected. A forgotten passphrase can't be recovered.
@@ -148,6 +152,12 @@ It's heuristic. Trains usually show up as **Drive**.
 - **Pause recording…** on the main screen stops recording for 1 hour, 4 hours, or until 7:00 tomorrow, then resumes by itself. Use it for places you'd rather not have in your history. Nothing is recorded while paused, and the GPS stays off.
 - **Siri and Shortcuts:** *Start Recording*, *Stop Recording* and *Pause Recording* (for N hours) show up in the Shortcuts app and work with Siri ("Pause Pos XY"). Pair them with automations, for example *When CarPlay connects → Start Recording*, or *When I arrive at [place] → Pause Recording*.
 - The Export row shows when you last made an export, as a reminder to back up.
+
+## Lock Screen, Control Center and the Action button (iOS 18)
+
+- **Controls:** *Record Location* (on/off) and *Pause for 1 Hour* (tap again to resume). Add them to **Control Center** (swipe down → hold → Add a Control → Pos XY), to the **Lock Screen**'s bottom buttons (hold the Lock Screen → Customize → Lock Screen → tap a button), or to the **Action button** (Settings → Action Button → Controls → Pos XY).
+- **Recording Status widget:** on the Lock Screen (circular, rectangular, or the line above the clock) and the Home Screen (small, with a Record/Stop button). It shows whether Pos XY is recording or paused, how many points it took today, and how long ago the last fix was.
+- The widgets show no coordinates or place names, since anyone holding the phone can see the Lock Screen. The app shares just that status with its widget extension through an App Group on the iPhone.
 
 ## Recording frequency
 
@@ -197,6 +207,8 @@ No third-party code in the apps. Both use only Apple's built-in frameworks: Swif
 ```
 Shared/   models, activity segmentation, export encryption (used by both apps)
 iOS/      recorder app: CoreLocation + CoreMotion, storage, export, Face ID lock
+iOSShared/  recording status + control intents (compiled into the app and the widget extension)
+Widgets/  widget extension: Lock Screen/Home Screen status widget, Control Center/Action button controls
 Mac/      viewer app: MapKit + OpenStreetMap tiles, timeline, trip list
 Config/   Info.plists and Mac sandbox entitlements
 Shared/   …also Places.swift (Home/Work detection) and Importers.swift (Google Timeline, GPX)
