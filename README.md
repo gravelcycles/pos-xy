@@ -17,6 +17,8 @@ The file format is fully specified in [docs/FORMAT.md](docs/FORMAT.md), with tes
 
 ## Install
 
+> **Want it on your phone from a link?** See **[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)**. With a paid Apple Developer account, a GitHub Action builds the app and sends it to TestFlight. Every push also builds both apps in CI, and tagged versions get downloads on GitHub Releases.
+
 You need a Mac with **Xcode** (free, from the App Store). There's no way to put a home-made app on an iPhone without Xcode, short of the App Store or TestFlight.
 
 ### iPhone app
