@@ -8,6 +8,8 @@ struct ContentView: View {
     @EnvironmentObject private var placeCache: PlaceCache
     @State private var todayPoints: [TrackPoint] = []
     @State private var todaySegments: [Segment] = []
+    @State private var todayMap = DayMapData.empty
+    @State private var mapRequest: DayMapRequest?
     @State private var confirmDelete = false
     @State private var storageBytes = 0
     @State private var dayCount = 0
@@ -19,6 +21,7 @@ struct ContentView: View {
                 recordingSection
                 todaySection
                 FrequencySection()
+                MapSettingsSection()
                 Section {
                     NavigationLink {
                         HistoryView()
@@ -41,6 +44,10 @@ struct ContentView: View {
                 privacySection
             }
             .navigationTitle("Pos XY")
+            .fullScreenCover(item: $mapRequest) { req in
+                DayMapScreen(title: "Today", data: todayMap, focus: req.focus,
+                             placeName: { placeCache.place(for: $0, points: todayMap.points)?.name })
+            }
             .task(id: recorder.todayCount / 5) { await reloadToday() }
             .task { placeCache.refresh() }
             .task {
@@ -149,8 +156,8 @@ struct ContentView: View {
 
     private var todaySection: some View {
         Section("Today") {
-            TrackSketch(points: todayPoints, segments: todaySegments)
-                .frame(height: 220)
+            DayMapCard(data: todayMap, emptyText: "No points yet today") { mapRequest = DayMapRequest() }
+                .frame(height: 240)
                 .listRowInsets(EdgeInsets())
             let stops = todaySegments.compactMap { placeCache.place(for: $0, points: todayPoints)?.name }
                 .reduce(into: [String]()) { if $0.last != $1 { $0.append($1) } }
@@ -199,6 +206,7 @@ struct ContentView: View {
                     PointStore.shared.deleteAll()
                     MotionStore.shared.deleteAll()
                     CorrectionStore.shared.deleteAll()
+                    MapSettings.shared.clearCache()
                     recorder.refreshTodayCount()
                     placeCache.refresh(force: true)
                     Task { await reloadToday() }
@@ -207,7 +215,7 @@ struct ContentView: View {
         } header: {
             Text("Privacy")
         } footer: {
-            Text("This app never uses the network. History stays on this iPhone, encrypted by iOS Data Protection and excluded from iCloud backups. It only leaves when you export it.")
+            Text("Your history stays on this iPhone, encrypted by iOS Data Protection and excluded from iCloud backups. It only leaves when you export it. The only thing the app ever downloads is map images (see Map above); recording never uses the network.")
         }
     }
 
@@ -228,7 +236,7 @@ struct ContentView: View {
     @MainActor
     private func reloadToday() async {
         let key = PointStore.dayKey(Date())
-        let result = await Task.detached(priority: .utility) { () -> ([TrackPoint], [Segment], Int, Int) in
+        let result = await Task.detached(priority: .utility) { () -> ([TrackPoint], [Segment], Int, Int, DayMapData) in
             let store = PointStore.shared
             let pts = Segmenter.clean(store.points(dayKey: key))
             let motion = MotionStore.shared.spans(dayKey: key)
@@ -236,8 +244,9 @@ struct ContentView: View {
             if let first = pts.first, let last = pts.last {
                 segs = Corrections.apply(CorrectionStore.shared.corrections(from: first.t, to: last.t.addingTimeInterval(1)), to: segs)
             }
-            return (pts, segs, store.totalBytes(), store.dayKeys().count)
+            return (pts, segs, store.totalBytes(), store.dayKeys().count, DayMapData(points: pts, segments: segs))
         }.value
+        todayMap = result.4
         todayPoints = result.0
         todaySegments = result.1
         storageBytes = result.2

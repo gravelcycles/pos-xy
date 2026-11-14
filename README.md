@@ -2,7 +2,7 @@
 
 A private, on-device location history (your own "Google Maps Timeline"), in two parts:
 
-- **Pos XY** (iPhone) records where you go, in the background and in airplane mode. It never touches the network.
+- **Pos XY** (iPhone) records where you go, in the background and in airplane mode. Recording never touches the network; the only download is (optional) OpenStreetMap map images, fetched in a privacy-blurring way.
 - **Pos XY Viewer** (Mac app) shows a day on an OpenStreetMap map. Scrub through the day and see each trip labelled as walk, run, bike, drive, flight or stay.
 - **Web viewer** (any browser, served from `localhost`) does the same with no Xcode build. Run one Python command.
 
@@ -57,7 +57,7 @@ It needs only Python 3 (included with Xcode's command line tools) and a modern b
 
 ## Using it
 
-**On the iPhone:** the main screen shows today's track as a local sketch, plus totals for walk, bike, drive and so on. **History** lists past days, each with its own sketch and trip timeline. Swipe a day to delete it.
+**On the iPhone:** the main screen shows today's track on an OpenStreetMap map, plus totals for walk, bike, drive and so on. **History** lists past days, each with its own map and trip timeline. Swipe a day to delete it. Tap a map to open it full screen: drag, pinch or double-tap to zoom, and drag the slider to replay the day. In History, tap a trip → **Show on map** to zoom straight to it.
 
 **Export from the iPhone:** tap **Export & AirDrop to Mac**, choose a range, keep **Lock with a passphrase** on, and tap **Create export file**, then **Send via AirDrop…** and pick your Mac. The file lands in `~/Downloads`.
 
@@ -109,7 +109,12 @@ You'll see the names in every timeline: the iPhone's Today view (e.g. "Home → 
 ## Privacy
 
 **iPhone**
-- No network code at all. The app doesn't show a map on the phone (that would send your area to a tile server); the "Today" view is drawn locally.
+- Recording, storage and export never use the network. The **only** request the app can make is downloading OpenStreetMap map images (Settings → Map; turn it off and nothing is ever downloaded, the map is drawn on a plain background). Your points are never sent, only tile numbers, and those are blurred:
+  - **Whole blocks:** asking for one tile downloads its whole 4×4 block in random order, so OSM learns which block you looked at, not where in it.
+  - **Detail cap:** *Map detail* limits how fine the downloaded tiles get: Coarse (OSM learns a ≈8 km square), Balanced (≈2 km, default) or Street (≈500 m). Zooming closer enlarges the tiles on the phone.
+  - **Downloaded once:** tiles are kept on the phone (Data Protection, not backed up, up to 200 MB) and never re-requested while cached, so looking at home every day sends nothing. **Delete all history** also clears them.
+  - **Nothing identifying:** no cookies, no cache validators, no Referer, a generic User-Agent, a fixed Accept-Language. Your IP address still reveals your rough area, as with any website; use a VPN if that matters.
+  - Optional: don't use cellular data for maps.
 - Points are stored as one file per day in the app's private container, using iOS **Data Protection**, which encrypts with a key tied to your passcode. The class is `completeUntilFirstUserAuthentication` so recording can continue while the phone is locked.
 - History is excluded from iCloud and Finder backups. Deleting the app deletes it.
 - Optional **Require Face ID** lock for the app's screen. Recording continues while it's locked.
@@ -122,7 +127,7 @@ You'll see the names in every timeline: the iPhone's Today view (e.g. "Home → 
 
 **Mac viewer**
 - Keeps your history **in memory only**. Quit it and it's gone. Your original files stay wherever you put them.
-- The only network traffic is map tiles from `tile.openstreetmap.org`. That server sees which map areas you look at, as with any web map. Tiles are cached on disk (up to 512 MB) so areas you revisit aren't requested again.
+- The only network traffic is map tiles from `tile.openstreetmap.org`, downloaded the same way as on the iPhone (whole 4×4 blocks in random order, no cookies or identifying headers), so the server learns which blocks you look at, not exactly where. Tiles are cached on disk (up to 512 MB) and never re-requested while cached.
 
 **Web viewer**
 - `serve.py` listens on `127.0.0.1` only. It refuses requests whose `Host` isn't `localhost` (which blocks DNS-rebinding attacks), serves only export-looking files from the chosen folder by bare name (no paths), never lists directories, and makes no outbound requests itself.
@@ -236,7 +241,7 @@ The segmenter exists twice, in `Shared/Segmenter.swift` (both apps) and `web/sta
 
 ## Dependencies
 
-No third-party code in the apps. Both use only Apple's built-in frameworks: SwiftUI, CoreLocation, CoreMotion, CryptoKit, CommonCrypto, LocalAuthentication, and MapKit (Mac only). There are no third-party packages, analytics or crash reporters. The iPhone app contains no networking code, so it can't send your location anywhere. On the Mac, MapKit is only the map widget: Apple's map content is replaced by OSM tiles, and "show my location" is never turned on. The web viewer uses Leaflet, a widely used open-source map library vendored in the repo. It makes no network requests except loading the tile images you see.
+No third-party code in the apps. Both use only Apple's built-in frameworks: SwiftUI, CoreLocation, CoreMotion, CryptoKit, CommonCrypto, LocalAuthentication, and MapKit (Mac only). There are no third-party packages, analytics or crash reporters. The iPhone app's only networking code is the map tile downloader (`Shared/MapTiles.swift`), which sends tile numbers and nothing else, so it can't send your location anywhere. On the Mac, MapKit is only the map widget: Apple's map content is replaced by OSM tiles, and "show my location" is never turned on. The web viewer uses Leaflet, a widely used open-source map library vendored in the repo. It makes no network requests except loading the tile images you see.
 
 ## Project layout
 
