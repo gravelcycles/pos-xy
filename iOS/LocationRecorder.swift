@@ -185,13 +185,19 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     private func beginUpdates() {
         manager.allowsBackgroundLocationUpdates = true
         manager.pausesLocationUpdatesAutomatically = false   // never let iOS silently stop us
-        // With only "While Using" permission, iOS keeps background updates going only while the
-        // blue location pill is shown; with Always it's not needed.
-        manager.showsBackgroundLocationIndicator = manager.authorizationStatus != .authorizedAlways
+        // The blue location pill (top left). With Always permission, background updates keep going
+        // without it, so we don't show it, like Google Maps outside navigation. With only "While
+        // Using", iOS keeps background updates going only while the pill is shown, and the
+        // background-activity session is what allows them at all, so then we need both.
+        let always = manager.authorizationStatus == .authorizedAlways
+        manager.showsBackgroundLocationIndicator = !always
         manager.activityType = .other
-        // iOS 17+: an explicit background-activity session keeps location delivery alive while the
-        // app isn't on screen. Created here (usually in the foreground) and held until Stop.
-        if backgroundSession == nil { backgroundSession = CLBackgroundActivitySession() }
+        if always {
+            backgroundSession?.invalidate()            // a live session forces the pill on
+            backgroundSession = nil
+        } else if backgroundSession == nil {
+            backgroundSession = CLBackgroundActivitySession()
+        }
         isLowPower = false
         applyAccuracy()
         manager.startUpdatingLocation()
@@ -207,7 +213,8 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         let geofence = manager.authorizationStatus == .authorizedAlways
             && CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self)
         diag.log("recorder", "Updates started (permission \(Self.describe(manager.authorizationStatus)), "
-                 + "background indicator \(manager.showsBackgroundLocationIndicator ? "on" : "off"), "
+                 + "blue pill \(manager.showsBackgroundLocationIndicator ? "on" : "off"), "
+                 + "background session \(backgroundSession == nil ? "off" : "on"), "
                  + "rolling geofence \(geofence ? "on" : "off: needs Always")).")
     }
 
