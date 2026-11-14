@@ -13,7 +13,7 @@ This was written by the cloud Claude session that built the project, for a **loc
   - Background GPS recording that works in airplane mode, with motion-based activity tags.
   - A "Record a point" frequency setting (continuous, 1/5/15/60 min, or custom), and pause (1 h, 4 h, until morning).
   - Siri & Shortcuts actions: Start, Stop, Pause.
-  - Today sketch with the day's places, History, optional Face ID lock.
+  - Today and History maps on OpenStreetMap (iOS/DayMap.swift: own Canvas tile renderer, no MapKit on iPhone), full screen with pan/pinch/double-tap zoom and a time scrubber; tiles via `TileFetcher` in whole blocks with a zoom cap (Settings → Map). History, optional Face ID lock.
   - Export to a passphrase-locked `.pxy` or plain JSON, sent via AirDrop.
 - **Mac viewer:** an OSM map, day list, scrubbable timeline with playback, and a trip list with place names. It opens `.pxy`, JSON, GPX and Google Timeline/Takeout files.
 - **Web viewer:**
@@ -92,7 +92,7 @@ GUI fallback: open `PosXY.xcodeproj`, choose your team on the PosXY target, sele
   4. Absorb runs that are too short (under 90 s, or under 180 s for stays).
   5. Re-classify runs that had no motion data from their speed percentiles.
 - **Places** (`Shared/Places.swift`, `web/static/js/places.js`): stays of 5 minutes or more cluster within 150 m. Home = most time between 22:00 and 06:00 (at least 4 h). Work = most weekday 9–17 time (at least 4 h, on 2+ days). The rest are ranked by total time.
-- **Viewers:** the Mac app keeps everything in memory (`Mac/TrackLibrary.swift`) and uses MapKit with an `MKTileOverlay` for OSM tiles. The web app (`web/static/js/app.js`) uses Leaflet with a canvas renderer.
+- **Viewers:** the Mac app keeps everything in memory (`Mac/TrackLibrary.swift`) and uses MapKit with an `MKTileOverlay` for OSM tiles, loaded through the shared `TileFetcher` (blocks, disk cache). The iPhone draws its own maps (`iOS/DayMap.swift`) rather than MapKit, so no Apple map traffic either. The web app (`web/static/js/app.js`) uses Leaflet with a canvas renderer.
 
 ## 5. Real-device checklist (none of this has been verified yet)
 
@@ -114,6 +114,7 @@ GUI fallback: open `PosXY.xcodeproj`, choose your team on the PosXY target, sele
 8. **Face ID lock:** it should lock on background, and cancelling shouldn't loop the prompt.
 9. **Export:** make a locked export, AirDrop it to the Mac, open it in the Mac viewer and the web viewer with the passphrase, and check that place names appear.
 10. **Activity tags:** a real drive, walk and bike ride should be labelled correctly. Trains are known to show as Drive.
+11. **Maps:** Today and a History day show OSM tiles; tap opens full screen; pinch, drag, double-tap and +/− zoom; the slider replays the day and pans to follow. Airplane mode → plain grid background, no errors. Settings → Map → off → no tiles. Zooming past the detail cap should enlarge (blurry), not fetch finer tiles.
 
 ## 6. Backlog (ideas, roughly by value)
 

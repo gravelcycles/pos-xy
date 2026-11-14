@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Browse past days on the phone. Everything is drawn locally; no map tiles are fetched.
+/// Browse past days on the phone. Maps use OSM tiles fetched in coarse blocks (see TileFetcher).
 struct HistoryView: View {
     @EnvironmentObject private var recorder: LocationRecorder
     @State private var days: [String] = []
@@ -48,12 +48,14 @@ struct DayView: View {
     @State private var points: [TrackPoint] = []
     @State private var segments: [Segment] = []
     @State private var corrected: Set<Int> = []      // ids of segments with a manual correction
+    @State private var map = DayMapData.empty
+    @State private var mapRequest: DayMapRequest?
     @State private var loaded = false
 
     var body: some View {
         List {
             Section {
-                TrackSketch(points: points, segments: segments)
+                DayMapCard(data: map, emptyText: "No points", showsLastPoint: false) { mapRequest = DayMapRequest() }
                     .frame(height: 300)
                     .listRowInsets(EdgeInsets())
             }
@@ -81,6 +83,7 @@ struct DayView: View {
                                 }
                             }
                         }
+                        Button("Show on map", systemImage: "map") { mapRequest = DayMapRequest(focus: seg.first...seg.last) }
                         if corrected.contains(seg.id) {
                             Button("Back to automatic", systemImage: "arrow.uturn.backward") { resetCorrection(seg) }
                         }
@@ -99,6 +102,11 @@ struct DayView: View {
         .navigationBarTitleDisplayMode(.inline)
         .overlay { if !loaded { ProgressView() } }
         .task { await load() }
+        .fullScreenCover(item: $mapRequest) { req in
+            DayMapScreen(title: HistoryView.title(for: dayKey), data: map, focus: req.focus,
+                         placeName: { placeCache.place(for: $0, points: map.points)?.name },
+                         showsLastPoint: false)
+        }
     }
 
     private func segmentRow(_ seg: Segment) -> some View {
@@ -114,7 +122,8 @@ struct DayView: View {
                                 } else {
                                     Text(seg.type.label).font(.body.weight(.semibold))
                                 }
-                                if corrected.contains(seg.id) {
+                                Button("Show on map", systemImage: "map") { mapRequest = DayMapRequest(focus: seg.first...seg.last) }
+                        if corrected.contains(seg.id) {
                                     Image(systemName: "pencil.circle.fill").font(.caption).foregroundStyle(.secondary)
                                         .accessibilityLabel("Corrected by hand")
                                 }
@@ -144,15 +153,16 @@ struct DayView: View {
     @MainActor
     private func load() async {
         let key = dayKey
-        let result = await Task.detached(priority: .userInitiated) { () -> ([TrackPoint], [Segment], Set<Int>) in
+        let result = await Task.detached(priority: .userInitiated) { () -> ([TrackPoint], [Segment], Set<Int>, DayMapData) in
             let pts = Segmenter.clean(PointStore.shared.points(dayKey: key))
             let auto = Segmenter.segments(pts, motion: MotionStore.shared.spans(dayKey: key))
-            guard let first = pts.first, let last = pts.last else { return (pts, auto, []) }
+            guard let first = pts.first, let last = pts.last else { return (pts, auto, [], DayMapData(points: pts, segments: auto)) }
             let fixes = CorrectionStore.shared.corrections(from: first.t, to: last.t.addingTimeInterval(1))
             let segs = Corrections.apply(fixes, to: auto)
             let marked = Set(segs.filter { CorrectionStore.shared.isCorrected(from: $0.start, to: $0.end) }.map(\.id))
-            return (pts, segs, marked)
+            return (pts, segs, marked, DayMapData(points: pts, segments: segs))
         }.value
+        map = result.3
         points = result.0
         segments = result.1
         corrected = result.2

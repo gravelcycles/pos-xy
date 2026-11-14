@@ -4,17 +4,17 @@ import AppKit
 
 // MARK: - OpenStreetMap tiles
 
-/// Replaces Apple's map with OpenStreetMap's standard tiles.
-/// Tiles are cached on disk so revisiting an area doesn't hit the server again
-/// (and to follow the OSM tile usage policy).
+/// Replaces Apple's map with OpenStreetMap's standard tiles, downloaded through `TileFetcher`:
+/// whole 4×4 blocks in random order (so the server can't centre on what you looked at), cached on
+/// disk and never re-requested while cached, with no cookies or identifying headers.
 final class OSMTileOverlay: MKTileOverlay {
-    private static let session: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.urlCache = URLCache(memoryCapacity: 64 << 20, diskCapacity: 512 << 20)
-        config.requestCachePolicy = .returnCacheDataElseLoad
-        config.httpAdditionalHeaders = ["User-Agent": "PosXY-Viewer/1.0 (personal location history viewer)"]
-        config.httpMaximumConnectionsPerHost = 2
-        return URLSession(configuration: config)
+    static let fetcher: TileFetcher = {
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MapTiles", isDirectory: true)
+        let f = TileFetcher(directory: dir, userAgent: "PosXY-Viewer (personal location history viewer)",
+                            maxZoom: 19, diskLimit: 512 << 20)
+        f.prune()
+        return f
     }()
 
     static func make() -> OSMTileOverlay {
@@ -26,14 +26,9 @@ final class OSMTileOverlay: MKTileOverlay {
     }
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping (Data?, Error?) -> Void) {
-        let url = self.url(forTilePath: path)
-        Self.session.dataTask(with: url) { data, response, error in
-            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                result(nil, URLError(.badServerResponse))
-            } else {
-                result(data, error)
-            }
-        }.resume()
+        Self.fetcher.load(TileKey(z: path.z, x: path.x, y: path.y)) { data in
+            result(data, data == nil ? URLError(.resourceUnavailable) : nil)
+        }
     }
 }
 

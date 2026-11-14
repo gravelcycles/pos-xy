@@ -1,20 +1,20 @@
 # Pos XY: notes for Claude
 
 A private location history ("my own Google Maps Timeline"):
-- **iPhone app** (`iOS/`) records GPS on-device, in airplane mode too, with no networking code at all. It exports passphrase-locked files over AirDrop.
+- **iPhone app** (`iOS/`) records GPS on-device, in airplane mode too. Its only networking is the OSM map tile downloader (`Shared/MapTiles.swift`, switchable off in the app). It exports passphrase-locked files over AirDrop.
 - **Mac viewer** (`Mac/`) and **web viewer** (`web/`, served from localhost) show the history on OpenStreetMap.
 
 **Start here:** read [`docs/HANDOFF.md`](docs/HANDOFF.md). It covers the current state, how to deploy to the owner's iPhone, what's verified and what isn't, and the backlog.
 
 ## Ground rules (the owner cares about these)
-- **Privacy first.** The iPhone app must never make network requests. Don't add analytics, crash reporters, SDKs or third-party packages to the apps. The web viewer's CSP allows only `self` plus OSM tile images; keep it that way.
+- **Privacy first.** The iPhone app must never make network requests other than OSM map tiles through `TileFetcher` (whole 4×4 blocks, shuffled, zoom-capped by the Map detail setting, cached forever, no cookies/identifying headers). Never send points, place names or anything but tile numbers; don't log tile numbers (they're locations). Don't add analytics, crash reporters, SDKs or third-party packages to the apps. The web viewer's CSP allows only `self` plus OSM tile images; keep it that way.
 - **No third-party code in the apps.** Apple frameworks only. The web viewer vendors Leaflet 1.9.4 (in `web/static/vendor/`), and nothing else is loaded from the internet.
 - **Two implementations of the core logic** must stay identical: Swift in `Shared/` (Segmenter, Places, Importers) and JS in `web/static/js/` (segmenter.js, places.js, importers.js). If you change one, change the other and run the parity checks.
 
 ## Layout
 ```
 PosXY.xcodeproj   hand-written, objectVersion 77, "synchronized folder" groups (Xcode 16+)
-Shared/           Swift used by BOTH apps: TrackPoint, ActivityType, MotionSpan, Segmenter, Corrections, Places, Importers, ExportCodec, Formatting
+Shared/           Swift used by BOTH apps: TrackPoint, ActivityType, MotionSpan, Segmenter, Corrections, Places, Importers, ExportCodec, Formatting, MapTiles (tile math + privacy tile fetcher)
 iOS/              iPhone app target "PosXY"   (bundle $(APP_BUNDLE_ID) = io.github.gravelcycles.posxy, iOS 17+)
 iOSShared/        Swift compiled into BOTH PosXY and PosXYWidgets: RecordingStatus (shared keychain item), control intents
 Widgets/          widget extension target "PosXYWidgets" ($(APP_BUNDLE_ID).widgets, iOS 18+): status widget + controls
