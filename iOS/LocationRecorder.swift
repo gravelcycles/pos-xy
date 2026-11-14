@@ -78,6 +78,11 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     private var bestCandidate: CLLocation?
     // Keeps background location alive (iOS 17+); held while recording.
     private var backgroundSession: CLBackgroundActivitySession?
+    // Rolling geofence: a circle around the last point. Leaving it makes iOS relaunch the app
+    // even after it was killed, after ~150 m of movement instead of ~500 m for significant changes.
+    private static let rollingRegionID = "posxy.rolling"
+    private static let rollingRadius: CLLocationDistance = 150
+    private var rollingCenter: CLLocation?
     // Diagnostics (no coordinates are logged).
     private let diag = Diagnostics.shared
     private var lastDelivery: Date?
@@ -144,6 +149,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         motion.stopActivityUpdates()
         manager.allowsBackgroundLocationUpdates = false
         manager.stopMonitoringVisits()
+        stopRollingRegion()
         backgroundSession?.invalidate()
         backgroundSession = nil
         isLowPower = false
@@ -191,8 +197,11 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         }
         manager.startMonitoringVisits()
         startMotion()
+        let geofence = manager.authorizationStatus == .authorizedAlways
+            && CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self)
         diag.log("recorder", "Updates started (permission \(Self.describe(manager.authorizationStatus)), "
-                 + "background indicator \(manager.showsBackgroundLocationIndicator ? "on" : "off")).")
+                 + "background indicator \(manager.showsBackgroundLocationIndicator ? "on" : "off"), "
+                 + "rolling geofence \(geofence ? "on" : "off: needs Always")).")
     }
 
     private func applyAccuracy() {
@@ -287,6 +296,42 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         } else {
             for loc in locations { record(loc) }
         }
+    }
+
+    // MARK: Rolling geofence
+
+    /// Moves the geofence to `loc` once we've drifted more than half its radius from its centre.
+    private func updateRollingRegion(around loc: CLLocation, force: Bool = false) {
+        guard isRecording, manager.authorizationStatus == .authorizedAlways,
+              CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else { return }
+        if !force, let c = rollingCenter, loc.distance(from: c) < Self.rollingRadius / 2 { return }
+        let region = CLCircularRegion(center: loc.coordinate, radius: Self.rollingRadius, identifier: Self.rollingRegionID)
+        region.notifyOnEntry = false
+        region.notifyOnExit = true
+        manager.startMonitoring(for: region)          // same identifier replaces the previous circle
+        if rollingCenter == nil { diag.log("geofence", "Armed (\(Int(Self.rollingRadius)) m around the latest point).") }
+        rollingCenter = loc
+    }
+
+    private func stopRollingRegion() {
+        for region in manager.monitoredRegions where region.identifier == Self.rollingRegionID {
+            manager.stopMonitoring(for: region)
+        }
+        rollingCenter = nil
+    }
+
+    func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+        guard region.identifier == Self.rollingRegionID else { return }
+        diag.heartbeat()
+        diag.log("geofence", "Left the \(Int(Self.rollingRadius)) m geofence: iOS woke the app.")
+        rollingCenter = nil                            // re-arm around the next fix
+        setLowPower(false)                             // we're clearly moving
+    }
+
+    func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
+        guard region?.identifier == Self.rollingRegionID else { return }
+        diag.log("geofence", "Monitoring failed: \(error.localizedDescription)")
+        rollingCenter = nil
     }
 
     // MARK: Diagnostics
@@ -505,6 +550,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         )
         store.append(point)
         lastPoint = point
+        updateRollingRegion(around: loc)
 
         if PointStore.dayKey(point.t) == countDayKey {
             todayCount += 1
