@@ -139,3 +139,6 @@ kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-
 code { font: 12px ui-monospace, monospace; }
 .day-list button .dist { float: right; font-size: 11px; opacity: .7; }
 .low-zoom .leaflet-tooltip.perm { display: none; }
+
+.segments select.correct { margin-top: 3px; font-size: 11px; padding: 1px 4px; border-radius: 5px; color: var(--muted); max-width: 150px; display: none; }
+.segments li:hover select.correct, .segments li.current select.correct, .segments select.correct:focus { display: block; }

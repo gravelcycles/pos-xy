@@ -2,6 +2,12 @@ import Foundation
 
 enum ActivityType: String, Codable, CaseIterable, Hashable {
     case stationary, walking, running, cycling, driving, flying, unknown
+    // Set by hand (corrections) or by imports; the automatic classifier calls these "driving".
+    // Appended after `unknown` so tie-breaks between the automatic types stay as they were.
+    case train, bus, boat
+
+    /// Types you can pick when correcting an activity, in menu order.
+    static let correctable: [ActivityType] = [.walking, .running, .cycling, .driving, .train, .bus, .boat, .flying, .stationary]
 
     /// Unknown strings decode as `.unknown` instead of failing the whole file.
     init(from decoder: Decoder) throws {
@@ -18,6 +24,9 @@ enum ActivityType: String, Codable, CaseIterable, Hashable {
         case .driving: return "Drive"
         case .flying: return "Flight"
         case .unknown: return "Unknown"
+        case .train: return "Train"
+        case .bus: return "Bus"
+        case .boat: return "Boat"
         }
     }
 
@@ -30,6 +39,9 @@ enum ActivityType: String, Codable, CaseIterable, Hashable {
         case .driving: return "car.fill"
         case .flying: return "airplane"
         case .unknown: return "questionmark"
+        case .train: return "tram.fill"
+        case .bus: return "bus.fill"
+        case .boat: return "ferry.fill"
         }
     }
 
@@ -42,6 +54,9 @@ enum ActivityType: String, Codable, CaseIterable, Hashable {
         case .driving: return (0.20, 0.45, 0.95)
         case .flying: return (0.90, 0.25, 0.45)
         case .unknown: return (0.55, 0.55, 0.58)
+        case .train: return (0.72, 0.47, 0.20)
+        case .bus: return (0.85, 0.30, 0.20)
+        case .boat: return (0.12, 0.38, 0.62)
         }
     }
 

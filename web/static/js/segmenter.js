@@ -10,8 +10,14 @@ export const ACTIVITY = {
   driving: { label: 'Drive', color: 'rgb(51,115,242)' },
   flying: { label: 'Flight', color: 'rgb(230,64,115)' },
   unknown: { label: 'Unknown', color: 'rgb(140,140,148)' },
+  // Set by hand (corrections) or by imports; the automatic classifier calls these driving.
+  train: { label: 'Train', color: 'rgb(184,120,51)' },
+  bus: { label: 'Bus', color: 'rgb(217,77,51)' },
+  boat: { label: 'Boat', color: 'rgb(31,97,158)' },
 };
-export const ACTIVITY_ORDER = ['stationary', 'walking', 'running', 'cycling', 'driving', 'flying', 'unknown'];
+export const ACTIVITY_ORDER = ['stationary', 'walking', 'running', 'cycling', 'driving', 'flying', 'unknown', 'train', 'bus', 'boat'];
+/** Types you can pick when correcting an activity, in menu order (same as ActivityType.correctable). */
+export const CORRECTABLE = ['walking', 'running', 'cycling', 'driving', 'train', 'bus', 'boat', 'flying', 'stationary'];
 export const isDashed = (type) => type === 'flying' || type === 'unknown';
 export const MINIMUM_GAP = 5 * 60;
 
@@ -97,6 +103,7 @@ export function pointLabel(p, v) {
     case 'walking': case 'running': return v > 6 ? s : m;
     case 'cycling': return v > 17 ? 'driving' : 'cycling';
     case 'driving': return 'driving';
+    case 'train': case 'bus': case 'boat': return m;   // only from imports or corrections
     case 'flying': return 'flying';
     default: return s;
   }
@@ -235,6 +242,44 @@ export function segments(points, motion = []) {
     for (let e = r.lo; e <= r.hi; e++) dist += edgeDist[e];
     return { type: r.type, first: r.lo, last: r.hi + 1, start: p[r.lo].t, end: p[r.hi + 1].t, distance: dist };
   });
+}
+
+// ---- Manual corrections (port of Shared/Corrections.swift). Corrections: { start, end, act }.
+
+/** Later corrections win; a segment covered ≥ half its duration takes the activity; neighbours with the same activity merge. */
+export function applyCorrections(segs, corrections) {
+  if (!corrections?.length) return segs;
+  const relabelled = segs.map((seg) => {
+    const s = { ...seg };
+    const duration = seg.end - seg.start;
+    if (!(duration > 0)) return s;
+    for (const c of corrections) {
+      if (!c.act || c.act === 'unknown') continue;
+      const overlap = Math.min(c.end, seg.end) - Math.max(c.start, seg.start);
+      if (overlap >= 0.5 * duration) s.type = c.act;
+    }
+    return s;
+  });
+  const merged = [];
+  for (const s of relabelled) {
+    const last = merged[merged.length - 1];
+    if (last && last.type === s.type) { last.last = s.last; last.end = s.end; last.distance += s.distance; }
+    else merged.push(s);
+  }
+  return merged;
+}
+
+/** Corrections minus any covering ≥ half of [start, end] ("back to automatic"). */
+export function removeCorrections(corrections, start, end) {
+  const span = end - start;
+  if (!(span > 0)) return corrections;
+  return corrections.filter((c) => Math.min(c.end, end) - Math.max(c.start, start) < 0.5 * span);
+}
+
+/** Valid ones only, sorted by start (stable). */
+export function normalizeCorrections(corrections) {
+  return corrections.filter((c) => c.end > c.start && c.act && c.act !== 'unknown' && ACTIVITY[c.act])
+    .map((c, i) => [c, i]).sort((a, b) => (a[0].start !== b[0].start ? a[0].start - b[0].start : a[1] - b[1])).map((x) => x[0]);
 }
 
 export function totals(segs) {

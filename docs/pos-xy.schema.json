@@ -33,6 +33,13 @@
       "items": {
         "$ref": "#/$defs/motionSpan"
       }
+    },
+    "corrections": {
+      "type": "array",
+      "description": "Manual activity corrections, in the order made (later wins). See docs/FORMAT.md \u00a72.2.",
+      "items": {
+        "$ref": "#/$defs/correction"
+      }
     }
   },
   "$defs": {
@@ -82,7 +89,7 @@
         },
         "act": {
           "type": "string",
-          "description": "Activity reported by the device. Known values: stationary, walking, running, cycling, driving, flying, unknown. Readers map anything else to unknown."
+          "description": "Activity reported by the device or an import. Known values: stationary, walking, running, cycling, driving, train, bus, boat, flying, unknown. Readers map anything else to unknown."
         }
       }
     },
@@ -109,6 +116,36 @@
             "running",
             "cycling",
             "driving",
+            "flying"
+          ]
+        }
+      }
+    },
+    "correction": {
+      "type": "object",
+      "required": [
+        "start",
+        "end",
+        "act"
+      ],
+      "properties": {
+        "start": {
+          "type": "number"
+        },
+        "end": {
+          "type": "number",
+          "description": "> start"
+        },
+        "act": {
+          "enum": [
+            "stationary",
+            "walking",
+            "running",
+            "cycling",
+            "driving",
+            "train",
+            "bus",
+            "boat",
             "flying"
           ]
         }

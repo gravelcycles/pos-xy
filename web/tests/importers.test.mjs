@@ -67,7 +67,9 @@ test('helpers', () => {
   assert.deepEqual(parseLatLng('geo:-33.8,151.2'), [-33.8, 151.2]);
   assert.equal(parseLatLng('nope'), null);
   assert.equal(googleActivity('in passenger vehicle'), 'driving');
-  assert.equal(googleActivity('IN_SUBWAY'), 'driving');
+  assert.equal(googleActivity('IN_SUBWAY'), 'train');
+  assert.equal(googleActivity('in bus'), 'bus');
+  assert.equal(googleActivity('IN_FERRY'), 'boat');
   assert.equal(googleActivity('ON_BICYCLE'), 'cycling');
   assert.equal(googleActivity('something new'), 'unknown');
 });

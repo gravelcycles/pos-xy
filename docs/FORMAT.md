@@ -55,6 +55,7 @@ A point is a JSON object recording one location fix.
 | `cycling` | On a bicycle. |
 | `driving` | In a vehicle. iOS's "automotive" includes being stopped in traffic. |
 | `flying` | Reserved. The phone never writes it; viewers infer flights from speed. |
+| `train`, `bus`, `boat` | Never classified automatically (they look like driving). Written by imports (e.g. Google's "in train") and by corrections (§2.2). |
 | `unknown` | Unclassified. Equivalent to absent. |
 
 The phone records `act` only when iOS reports at least medium confidence. Viewers treat it as a hint and re-check it against speed (see the README, "How activities are classified").
@@ -92,6 +93,27 @@ Rules:
 {"start":1762963200,"end":1762965000,"act":"driving"}
 ```
 
+## 2.2 Activity correction
+
+A manual fix made by the owner, for example a "Drive" that was really a train. Corrections are stored by time range rather than by segment, so they survive re-segmentation.
+
+| Key | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `start` | number | **yes** | Unix time the corrected stretch began. |
+| `end` | number | **yes** | Unix time it ended. Must be greater than `start`. |
+| `act` | string | **yes** | `stationary`, `walking`, `running`, `cycling`, `driving`, `train`, `bus`, `boat` or `flying`. |
+
+Rules:
+- **Order matters: later corrections win.** Writers append a new correction and drop earlier ones that covered at least half of the same stretch.
+- **Applying** (reference: `Shared/Corrections.swift`, `applyCorrections` in `segmenter.js`):
+  1. After automatic segmentation, each segment covered by a correction for **at least half its duration** takes that correction's `act`.
+  2. Neighbouring segments with the same activity then merge.
+- **Readers** MUST drop corrections with an unknown `act` or with `end <= start`.
+
+```json
+{"start":1762963920,"end":1762965720,"act":"train"}
+```
+
 ## 3. Export document (`.json`)
 
 ```json
@@ -110,6 +132,7 @@ Rules:
 | `exportedAt` | number | no | Unix time the file was written. |
 | `points` | array of Point | **yes** | Any number of points, any order. |
 | `motion` | array of Motion span | no | Motion history for the exported period (§2.1). Omitted when there is none. |
+| `corrections` | array of Activity correction | no | Manual corrections for the exported period (§2.2), in the order they were made. Omitted when there are none. |
 
 **Versioning:**
 - A change that only adds optional keys keeps `version` at 1.
@@ -228,3 +251,4 @@ node --test web/tests/*.test.mjs                     # web viewer reader
 
 - **1** (2026-11): first version.
 - **1, addition** (2026-11): optional `motion` array of motion spans (§2.1). This is additive, so the version stays 1, and readers that don't know it ignore it.
+- **1, addition** (2026-11): optional `corrections` array (§2.2), and the `train`, `bus` and `boat` activities. Readers that don't know these map them to `unknown`, as §2 already requires.

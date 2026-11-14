@@ -93,6 +93,7 @@ final class TrackLibrary: ObservableObject {
         cache = [:]
         lastPassphrase = nil
         motion = []
+        corrections = []
         version += 1
         places = []
     }
@@ -100,8 +101,16 @@ final class TrackLibrary: ObservableObject {
     /// Motion-coprocessor history from the loaded files (labels gaps without points).
     private(set) var motion: [MotionSpan] = []
 
+    /// Manual corrections from the loaded files ("that drive was a train"), applied in file order.
+    private(set) var corrections: [ActivityCorrection] = []
+
     private func merge(_ contents: ExportContents, name: String) {
         if !contents.motion.isEmpty { motion = MotionSpans.normalized(motion + contents.motion) }
+        if !contents.corrections.isEmpty {
+            // Keep order (later wins) but drop exact repeats when the same export is opened twice.
+            var seen = Set(corrections)
+            corrections += contents.corrections.filter { seen.insert($0).inserted }
+        }
         let new = contents.points
         var seen = Set<Int64>()
         var all: [TrackPoint] = []
@@ -144,8 +153,9 @@ final class TrackLibrary: ObservableObject {
         let lo = lowerBound(day), hi = lowerBound(next)
         let cleaned = Segmenter.clean(Array(points[lo..<hi]))
         let dayMotion = MotionSpans.overlapping(motion, from: day, to: next)
-        let data = DayData(points: cleaned, segments: Segmenter.segments(cleaned, motion: dayMotion),
-                           gap: Segmenter.gapThreshold(cleaned))
+        let dayFixes = corrections.filter { $0.end > day && $0.start < next }
+        let segs = Corrections.apply(dayFixes, to: Segmenter.segments(cleaned, motion: dayMotion))
+        let data = DayData(points: cleaned, segments: segs, gap: Segmenter.gapThreshold(cleaned))
         cache[day] = data
         return data
     }

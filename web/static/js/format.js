@@ -5,7 +5,7 @@ export const MAGIC = 'PXYENC01';
 import { importForeign } from './importers.js';
 
 const HEADER_LEN = 8 + 16 + 4;   // magic + salt + iterations
-const ACTIVITIES = new Set(['stationary', 'walking', 'running', 'cycling', 'driving', 'flying', 'unknown']);
+const ACTIVITIES = new Set(['stationary', 'walking', 'running', 'cycling', 'driving', 'flying', 'unknown', 'train', 'bus', 'boat']);
 
 export class FormatError extends Error {
   constructor(code, message) { super(message); this.code = code; }
@@ -88,7 +88,7 @@ export function normalizeSpan(o) {
   return { start, end, act: o.act };
 }
 
-/** Like decodePoints, but returns { points, motion } (motion spans, unsorted; see segmenter.normalizeSpans). */
+/** Like decodePoints, but returns { points, motion, corrections } (see segmenter.normalizeSpans / normalizeCorrections). */
 export async function decodeFile(bytes, passphrase, info = {}) {
   if (isLocked(bytes)) {
     if (!passphrase) throw new FormatError('passphrase', 'This file is locked. Enter its passphrase.');
@@ -98,6 +98,7 @@ export async function decodeFile(bytes, passphrase, info = {}) {
   info.kind = 'Pos XY';
   let raw = null;
   let motionRaw = [];
+  let correctionsRaw = [];
   let parsed;
   try { parsed = JSON.parse(text); } catch { /* maybe JSON Lines or GPX */ }
   const foreign = importForeign(text, parsed);
@@ -110,6 +111,7 @@ export async function decodeFile(bytes, passphrase, info = {}) {
     if (Number(parsed.version) > 1) console.warn('Newer pos-xy version; reading what we understand.');
     raw = parsed.points;
     if (Array.isArray(parsed.motion)) motionRaw = parsed.motion;
+    if (Array.isArray(parsed.corrections)) correctionsRaw = parsed.corrections;
   }
   if (raw === null) {
     raw = [];
@@ -120,8 +122,18 @@ export async function decodeFile(bytes, passphrase, info = {}) {
   }
   const points = raw.map(normalizePoint).filter(Boolean);
   const motion = motionRaw.map(normalizeSpan).filter(Boolean);
+  const corrections = correctionsRaw.map(normalizeCorrection).filter(Boolean);
   if (points.length === 0) {
     throw new FormatError('unreadable', "No location points found. Supported: Pos XY, Google Takeout / Timeline, GPX.");
   }
-  return { points, motion };
+  return { points, motion, corrections };
+}
+
+const CORRECTION_ACTS = new Set(['stationary', 'walking', 'running', 'cycling', 'driving', 'flying', 'train', 'bus', 'boat']);
+/** Manual correction ({ start, end, act }) or null if unusable. Order in the file is kept (later wins). */
+export function normalizeCorrection(o) {
+  if (!o || typeof o !== 'object') return null;
+  const start = Number(o.start), end = Number(o.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || !CORRECTION_ACTS.has(o.act)) return null;
+  return { start, end, act: o.act };
 }

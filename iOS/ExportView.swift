@@ -133,7 +133,8 @@ struct ExportView: View {
                 let points = PointStore.shared.points(from: start, to: end)
                 guard let first = points.first, let last = points.last else { throw ExportError.nothingToExport }
                 let motion = MotionStore.shared.spans(from: min(start, first.t), to: max(end == .distantFuture ? last.t : end, last.t))
-                let json = try ExportCodec.makeJSON(points, motion: motion)
+                let fixes = CorrectionStore.shared.corrections(from: first.t, to: last.t.addingTimeInterval(1))
+                let json = try ExportCodec.makeJSON(points, motion: motion, corrections: fixes)
                 let data: Data
                 let ext: String
                 if let pass {

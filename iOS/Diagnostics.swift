@@ -47,6 +47,7 @@ final class Diagnostics: ObservableObject {
     private(set) var previousLastAlive: Date?
     private(set) var previousEndedCleanly = true
     private(set) var launchedByLocationEvent = false
+    private(set) var launchedAt: Date?
 
     private init() {
         let fm = FileManager.default
@@ -118,6 +119,7 @@ final class Diagnostics: ObservableObject {
     /// Call from application(_:didFinishLaunchingWithOptions:).
     func appLaunched(options: [UIApplication.LaunchOptionsKey: Any]?) {
         launchedByLocationEvent = options?[.location] != nil
+        launchedAt = Date()
         let info = Bundle.main.infoDictionary
         let version = "\(info?["CFBundleShortVersionString"] ?? "?") (\(info?["CFBundleVersion"] ?? "?"))"
         log("launch", "Pos XY \(version) on iOS \(UIDevice.current.systemVersion), \(UIDevice.current.model). "
