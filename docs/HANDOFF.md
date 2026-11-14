@@ -96,6 +96,14 @@ GUI fallback: open `PosXY.xcodeproj`, choose your team on the PosXY target, sele
 
 ## 5. Real-device checklist (none of this has been verified yet)
 
+> **Owner report (2026-11-14):** "losing a ton of points when the app isn't open". Diagnostics were added for this (main screen → **Diagnostics**). When debugging, have the owner open Diagnostics, tap **Share log**, and AirDrop the `.txt` to the Mac. The log never contains coordinates. Look for:
+> - `Launched BY iOS in the background`: a relaunch after iOS killed the app.
+> - `STOPPED WITHOUT WARNING`: the previous run ended with no termination callback.
+> - `No location updates for … before this one`: gaps.
+> - `GPS resting`: Smart mode dropped to 100 m accuracy while stationary.
+> - The 10-minute `location` summaries: deliveries vs. recorded vs. dropped.
+> - `Location permission While Using`: background recording can't survive a kill without Always.
+
 1. **Background recording:** lock the phone, walk or drive 20 minutes, and check that History shows the trip. Then force-quit and check it again: force-quitting is expected to stop recording until the app is reopened, and that's documented.
 2. **Always permission:** check that the upgrade prompt appears and that recording continues with the app closed.
 3. **Airplane mode:** turn it on, walk outside, and check that points are still recorded (GPS only).
