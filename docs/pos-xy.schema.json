@@ -4,26 +4,114 @@
   "title": "Pos XY export document, version 1",
   "description": "Plaintext of a .json export, and of a .pxy file after decryption and decompression. See docs/FORMAT.md.",
   "type": "object",
-  "required": ["format", "version", "points"],
+  "required": [
+    "format",
+    "version",
+    "points"
+  ],
   "properties": {
-    "format": { "const": "pos-xy" },
-    "version": { "type": "integer", "minimum": 1 },
-    "exportedAt": { "type": "number", "description": "Unix time (seconds) when the file was written." },
-    "points": { "type": "array", "items": { "$ref": "#/$defs/point" } }
+    "format": {
+      "const": "pos-xy"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "exportedAt": {
+      "type": "number",
+      "description": "Unix time (seconds) when the file was written."
+    },
+    "points": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/point"
+      }
+    },
+    "motion": {
+      "type": "array",
+      "description": "Motion-coprocessor history (optional). See docs/FORMAT.md \u00a72.1.",
+      "items": {
+        "$ref": "#/$defs/motionSpan"
+      }
+    }
   },
   "$defs": {
     "point": {
       "type": "object",
-      "required": ["t", "lat", "lon"],
+      "required": [
+        "t",
+        "lat",
+        "lon"
+      ],
       "properties": {
-        "t":   { "type": "number", "description": "Unix time in seconds (UTC), fractional allowed." },
-        "lat": { "type": "number", "minimum": -90, "maximum": 90, "description": "WGS 84 latitude, degrees." },
-        "lon": { "type": "number", "minimum": -180, "maximum": 180, "description": "WGS 84 longitude, degrees." },
-        "alt": { "type": "number", "description": "Altitude above mean sea level, metres." },
-        "acc": { "type": "number", "minimum": 0, "description": "Horizontal accuracy (radius), metres." },
-        "spd": { "type": "number", "minimum": 0, "description": "Ground speed, metres per second." },
-        "crs": { "type": "number", "minimum": 0, "exclusiveMaximum": 360, "description": "Course over ground, degrees clockwise from true north." },
-        "act": { "type": "string", "description": "Activity reported by the device. Known values: stationary, walking, running, cycling, driving, flying, unknown. Readers map anything else to unknown." }
+        "t": {
+          "type": "number",
+          "description": "Unix time in seconds (UTC), fractional allowed."
+        },
+        "lat": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "WGS 84 latitude, degrees."
+        },
+        "lon": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "WGS 84 longitude, degrees."
+        },
+        "alt": {
+          "type": "number",
+          "description": "Altitude above mean sea level, metres."
+        },
+        "acc": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Horizontal accuracy (radius), metres."
+        },
+        "spd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Ground speed, metres per second."
+        },
+        "crs": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 360,
+          "description": "Course over ground, degrees clockwise from true north."
+        },
+        "act": {
+          "type": "string",
+          "description": "Activity reported by the device. Known values: stationary, walking, running, cycling, driving, flying, unknown. Readers map anything else to unknown."
+        }
+      }
+    },
+    "motionSpan": {
+      "type": "object",
+      "required": [
+        "start",
+        "end",
+        "act"
+      ],
+      "properties": {
+        "start": {
+          "type": "number",
+          "description": "Unix time the activity began."
+        },
+        "end": {
+          "type": "number",
+          "description": "Unix time it ended (exclusive), > start."
+        },
+        "act": {
+          "enum": [
+            "stationary",
+            "walking",
+            "running",
+            "cycling",
+            "driving",
+            "flying"
+          ]
+        }
       }
     }
   }

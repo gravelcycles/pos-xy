@@ -27,6 +27,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         static let power = "recorder.powerMode"
         static let interval = "recorder.intervalSeconds"
         static let pausedUntil = "recorder.pausedUntil"
+        static let motionBackfilledUntil = "motion.backfilledUntil"
     }
 
     /// "Record a point" presets, in seconds. 0 = continuously (every ~15 m moved).
@@ -83,6 +84,9 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     private static let rollingRegionID = "posxy.rolling"
     private static let rollingRadius: CLLocationDistance = 150
     private var rollingCenter: CLLocation?
+    // Motion-history backfill
+    private var backfillRunning = false
+    private var lastBackfillAttempt = Date.distantPast
     // Diagnostics (no coordinates are logged).
     private let diag = Diagnostics.shared
     private var lastDelivery: Date?
@@ -114,7 +118,10 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         if let last = lastPoint {
             diag.log("recorder", "Last stored point is \(Diagnostics.duration(Date().timeIntervalSince(last.t))) old.")
         }
-        if isRecording { beginUpdates() }
+        if isRecording {
+            beginUpdates()
+            backfillMotion(reason: "launch")
+        }
         WidgetSync.publish(widgetStatus, force: true)
     }
 
@@ -298,6 +305,55 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         }
     }
 
+    // MARK: Motion-history backfill
+
+    /// Saves the motion coprocessor's activity history since the last backfill (iOS keeps 7 days,
+    /// recorded even while Pos XY wasn't running). The viewers use it to label gaps with no points.
+    func backfillMotion(reason: String) {
+        guard isRecording, CMMotionActivityManager.isActivityAvailable(), !backfillRunning else { return }
+        let now = Date()
+        let floor = now.addingTimeInterval(-7 * 86_400 + 600)
+        let from = max((defaults.object(forKey: Keys.motionBackfilledUntil) as? Date) ?? floor, floor)
+        lastBackfillAttempt = now
+        guard now.timeIntervalSince(from) > 300 else { return }
+        backfillRunning = true
+        motion.queryActivityStarting(from: from, to: now, to: .main) { [weak self] activities, error in
+            guard let self else { return }
+            self.backfillRunning = false
+            if let error {
+                self.diag.log("motion", "History query failed: \(error.localizedDescription)")
+                return
+            }
+            let (spans, until) = Self.spans(from: activities ?? [])
+            MotionStore.shared.append(spans)
+            if let until { self.defaults.set(until, forKey: Keys.motionBackfilledUntil) }
+            let moving = spans.filter { MotionSpans.moving.contains($0.act) }
+                .reduce(0.0) { $0 + $1.end.timeIntervalSince($1.start) }
+            self.diag.log("motion", "History backfill (\(reason)): \(spans.count) spans covering "
+                          + "\(Diagnostics.duration(now.timeIntervalSince(from))), \(Diagnostics.duration(moving)) of movement.")
+        }
+    }
+
+    /// Turns raw activity samples into spans. Sample i lasts until sample i+1 starts; the last one is
+    /// still going, so it's left for the next backfill (which starts from its start date).
+    static func spans(from activities: [CMMotionActivity]) -> ([MotionSpan], Date?) {
+        guard activities.count >= 2 else { return ([], nil) }
+        var out: [MotionSpan] = []
+        for i in 0..<(activities.count - 1) {
+            let a = activities[i]
+            let end = activities[i + 1].startDate
+            guard a.confidence != .low, end > a.startDate else { continue }
+            let type = ActivityType(motion: a)
+            guard type != .unknown else { continue }
+            if let last = out.last, last.act == type, abs(last.end.timeIntervalSince(a.startDate)) < 1 {
+                out[out.count - 1].end = end
+            } else {
+                out.append(MotionSpan(start: a.startDate, end: end, act: type))
+            }
+        }
+        return (out, activities.last?.startDate)
+    }
+
     // MARK: Rolling geofence
 
     /// Moves the geofence to `loc` once we've drifted more than half its radius from its centre.
@@ -342,6 +398,9 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         let background = UIApplication.shared.applicationState == .background
         if let last = lastDelivery, now.timeIntervalSince(last) > 5 * 60 {
             diag.log("gap", "No location updates for \(Diagnostics.duration(now.timeIntervalSince(last))) before this one.")
+            backfillMotion(reason: "after a gap")
+        } else if now.timeIntervalSince(lastBackfillAttempt) > 30 * 60 {
+            backfillMotion(reason: "periodic")
         }
         lastDelivery = now
         stats.batches += 1

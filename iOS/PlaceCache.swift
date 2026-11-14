@@ -16,8 +16,11 @@ final class PlaceCache: ObservableObject {
         lastRefresh = Date()
         Task.detached(priority: .utility) {
             let store = PointStore.shared
-            let days = store.dayKeys().suffix(180).map { store.points(dayKey: $0) }
-            let detected = Places.detect(days: Array(days))
+            let keys = store.dayKeys().suffix(180)
+            let days = keys.map { store.points(dayKey: $0) }
+            let from = keys.first.flatMap(PointStore.date(fromDayKey:)) ?? Date()
+            let motion = MotionStore.shared.spans(from: from, to: Date())
+            let detected = Places.detect(days: Array(days), motion: motion)
             await MainActor.run {
                 PlaceCache.shared.places = detected
                 PlaceCache.shared.running = false

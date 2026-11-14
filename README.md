@@ -188,6 +188,8 @@ To keep background recording alive, Pos XY holds an iOS background-activity sess
 
 The diagnostics log shows each of these wake-ups ("Left the 150 m geofence: iOS woke the app").
 
+**Motion history fills the gaps.** The iPhone's motion chip keeps 7 days of walk/run/bike/drive history, even while Pos XY isn't running. Each time the app wakes up, it saves that history on the phone as part of your data, and exports include it. The viewers then label a gap with no GPS points from what you were actually doing. A drive during which iOS had suspended the app shows as one Drive, drawn as a straight line between the last and next points, instead of an "unknown" gap.
+
 ## Battery
 
 Smart mode uses full GPS while you're moving (a point every 15 m) and drops to coarse location when the motion chip says you're stationary. Most of the battery cost is GPS time while moving, so it depends on how much you travel. iOS also relaunches the app after a reboot once you've moved about 500 m. **Don't force-quit it** from the app switcher: that stops background recording until you open it again.

@@ -177,7 +177,10 @@ enum Segmenter {
     }
 
     /// `points` must already be cleaned (sorted, de-duplicated).
-    static func segments(_ p: [TrackPoint]) -> [Segment] {
+    /// `motion` (optional, sorted) is the phone's motion-coprocessor history: it labels points that
+    /// have no activity tag and gaps that have no points at all (e.g. while iOS had the app suspended).
+    static func segments(_ points: [TrackPoint], motion: [MotionSpan] = []) -> [Segment] {
+        let p = MotionSpans.fill(points, from: motion)
         let n = p.count
         guard n >= 2 else { return [] }
         let gapThreshold = self.gapThreshold(p)
@@ -196,7 +199,9 @@ enum Segmenter {
                 isGap[i] = true
                 if d < 300 { edge[i] = .stationary }          // phone sat still / GPS slept
                 else if d / dt > 50 { edge[i] = .flying }      // e.g. no GPS through the plane window
-                else { edge[i] = .unknown }
+                else if let t = MotionSpans.dominantMoving(from: p[i].t, to: p[i + 1].t, in: motion) {
+                    edge[i] = t                                // the motion chip saw what happened
+                } else { edge[i] = .unknown }
             } else {
                 edge[i] = labels[i + 1]
             }

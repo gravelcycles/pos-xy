@@ -71,6 +71,27 @@ Example:
 {"t":1762963260.5,"lat":37.775312,"lon":-122.418927,"acc":6.5,"spd":1.41,"crs":42,"act":"walking"}
 ```
 
+## 2.1 Motion span
+
+The iPhone's motion coprocessor classifies what you're doing all day and keeps 7 days of history, even while Pos XY isn't running. The app saves that history as **motion spans** whenever it wakes up. Viewers use the spans to label stretches that have no GPS points, for example while iOS had the app suspended.
+
+| Key | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `start` | number | **yes** | Unix time the activity began. |
+| `end` | number | **yes** | Unix time it ended (exclusive). Must be greater than `start`. |
+| `act` | string | **yes** | `stationary`, `walking`, `running`, `cycling`, `driving` or `flying`. |
+
+Rules:
+- **Writers** SHOULD record only medium- or high-confidence samples, merge consecutive spans of the same activity, and not write an activity that is still in progress.
+- **Readers** MUST drop spans with an unknown `act`, or with `end <= start`. They SHOULD sort spans by `start` and de-duplicate on (`start`, `act`).
+- **Using spans** (reference: `Shared/MotionSpan.swift`, `segmenter.js`):
+  - A point without its own `act` takes the activity of the span covering it.
+  - A gap between points (§README "How activities are classified") that isn't a stay or a flight gets the moving activity (walking, running, cycling, driving) with the most overlap. This applies only if movement covers at least min(3 min, 20 % of the gap); ties go to that order.
+
+```json
+{"start":1762963200,"end":1762965000,"act":"driving"}
+```
+
 ## 3. Export document (`.json`)
 
 ```json
@@ -88,6 +109,7 @@ Example:
 | `version` | integer | **yes** | Format version. This document describes `1`. |
 | `exportedAt` | number | no | Unix time the file was written. |
 | `points` | array of Point | **yes** | Any number of points, any order. |
+| `motion` | array of Motion span | no | Motion history for the exported period (§2.1). Omitted when there is none. |
 
 **Versioning:**
 - A change that only adds optional keys keeps `version` at 1.
@@ -205,3 +227,4 @@ node --test web/tests/*.test.mjs                     # web viewer reader
 ## 8. Changelog
 
 - **1** (2026-11): first version.
+- **1, addition** (2026-11): optional `motion` array of motion spans (§2.1). This is additive, so the version stays 1, and readers that don't know it ignore it.
