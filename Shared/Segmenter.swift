@@ -129,6 +129,7 @@ enum Segmenter {
         case .walking, .running: return v > 6 ? s : m
         case .cycling: return v > 17 ? .driving : .cycling
         case .driving: return .driving               // includes stopped at a light
+        case .train, .bus, .boat: return m           // only from imports or corrections
         case .flying: return .flying
         case .unknown: return s
         }

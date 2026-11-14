@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var confirmDelete = false
     @State private var storageBytes = 0
     @State private var dayCount = 0
+    @State private var clock = Date()
 
     var body: some View {
         NavigationStack {
@@ -42,6 +43,12 @@ struct ContentView: View {
             .navigationTitle("Pos XY")
             .task(id: recorder.todayCount / 5) { await reloadToday() }
             .task { placeCache.refresh() }
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(15))
+                    clock = Date()
+                }
+            }
         }
     }
 
@@ -89,10 +96,25 @@ struct ContentView: View {
                 LabeledContent("Points today", value: "\(recorder.todayCount)")
                 if let p = recorder.lastPoint {
                     LabeledContent("Last fix") {
-                        Text(p.t, style: .time)
+                        TimelineView(.periodic(from: .now, by: 30)) { ctx in
+                            Text("\(p.t.formatted(date: .omitted, time: .shortened)) · \(RecordingHealth.duration(max(0, ctx.date.timeIntervalSince(p.t)))) ago")
+                        }
                     }
                     if let acc = p.acc {
                         LabeledContent("Accuracy", value: "±\(Int(acc)) m")
+                    }
+                }
+                // Why no new point lately? (`clock` ticks every 15 s, so this re-evaluates.)
+                if let why = RecordingHealth.explain(recorder.healthSnapshot(now: clock)) {
+                    NavigationLink {
+                        DiagnosticsView()
+                    } label: {
+                        Label {
+                            Text(why.text).font(.footnote)
+                        } icon: {
+                            Image(systemName: why.symbol)
+                        }
+                        .foregroundStyle(why.tone == .warning ? Color.orange : Color.secondary)
                     }
                 }
                 HStack {
@@ -176,6 +198,7 @@ struct ContentView: View {
                 Button("Delete everything", role: .destructive) {
                     PointStore.shared.deleteAll()
                     MotionStore.shared.deleteAll()
+                    CorrectionStore.shared.deleteAll()
                     recorder.refreshTodayCount()
                     placeCache.refresh(force: true)
                     Task { await reloadToday() }
@@ -209,7 +232,11 @@ struct ContentView: View {
             let store = PointStore.shared
             let pts = Segmenter.clean(store.points(dayKey: key))
             let motion = MotionStore.shared.spans(dayKey: key)
-            return (pts, Segmenter.segments(pts, motion: motion), store.totalBytes(), store.dayKeys().count)
+            var segs = Segmenter.segments(pts, motion: motion)
+            if let first = pts.first, let last = pts.last {
+                segs = Corrections.apply(CorrectionStore.shared.corrections(from: first.t, to: last.t.addingTimeInterval(1)), to: segs)
+            }
+            return (pts, segs, store.totalBytes(), store.dayKeys().count)
         }.value
         todayPoints = result.0
         todaySegments = result.1

@@ -1,17 +1,18 @@
 // Pos XY web viewer. Everything happens in this tab: files are decrypted here and kept in memory.
 import { decodeFile, isLocked, FormatError } from './format.js';
-import { ACTIVITY, ACTIVITY_ORDER, isDashed, clean, segments as segmentDay, totals, gapThreshold, distance, normalizeSpans, spansOverlapping } from './segmenter.js';
+import { ACTIVITY, ACTIVITY_ORDER, CORRECTABLE, isDashed, clean, segments as segmentDay, totals, gapThreshold, distance, normalizeSpans, spansOverlapping, applyCorrections, removeCorrections } from './segmenter.js';
 import { staysFromDay, detectPlaces, PLACE_RADIUS } from './places.js';
 import { toGPX } from './importers.js';
 
 const $ = (id) => document.getElementById(id);
-const ICON = { stationary: '📍', walking: '🚶', running: '🏃', cycling: '🚲', driving: '🚗', flying: '✈️', unknown: '❔' };
+const ICON = { stationary: '📍', walking: '🚶', running: '🏃', cycling: '🚲', driving: '🚗', flying: '✈️', unknown: '❔', train: '🚆', bus: '🚌', boat: '⛴️' };
 const PLACE_ICON = { home: '🏠', work: '💼' };
 
 // ---------------------------------------------------------------- state
 const state = {
   points: [],             // all loaded points, sorted, de-duplicated
   motion: [],             // motion-coprocessor spans from the files, sorted (label gaps without points)
+  corrections: [],        // manual corrections from the files, in file order (later wins)
   days: [],               // [{ key, date, count, distance? }] newest first
   dayCache: new Map(),
   loadedNames: new Set(),
@@ -64,6 +65,33 @@ function toast(text) {
 }
 
 // ---------------------------------------------------------------- custom place names (this browser only)
+// Activity corrections made in this browser ("that drive was a train"); applied after the files' own.
+const CORRECTIONS_KEY = 'posxy.corrections';
+let localCorrections = (() => { try { return JSON.parse(localStorage.getItem(CORRECTIONS_KEY) || '[]'); } catch { return []; } })();
+function saveLocalCorrections() {
+  try { localStorage.setItem(CORRECTIONS_KEY, JSON.stringify(localCorrections)); } catch { /* private mode: this session only */ }
+}
+function correctSegment(seg, act) {
+  localCorrections = removeCorrections(localCorrections, seg.start, seg.end);
+  if (act) localCorrections.push({ start: seg.start, end: seg.end, act });
+  saveLocalCorrections();
+  refreshDayAnalysis();
+}
+function isCorrected(seg) {
+  const span = seg.end - seg.start;
+  return span > 0 && [...state.corrections, ...localCorrections].some((c) => Math.min(c.end, seg.end) - Math.max(c.start, seg.start) >= 0.5 * span);
+}
+/** Re-segments the open day (and forgets cached days) after a correction. */
+function refreshDayAnalysis() {
+  state.dayCache.clear();
+  if (state.day) {
+    const time = state.time;
+    state.day = dayData(state.day.key);
+    state.time = time;
+  }
+  render();
+}
+
 const NAMES_KEY = 'posxy.placeNames';
 function loadNames() {
   try { return JSON.parse(localStorage.getItem(NAMES_KEY) || '[]'); } catch { return []; }
@@ -327,7 +355,19 @@ function renderDayPanel() {
       btn.addEventListener('click', (e) => { e.stopPropagation(); renamePlace(place); });
       title.append(btn);
     }
-    main.append(title, el('div', 'seg-time', `${fmtTime(s.start)} – ${fmtTime(s.end)}`));
+    // Correct the activity ("that drive was a train").
+    const pick = el('select', 'correct');
+    pick.title = 'Correct the activity';
+    pick.append(new Option(isCorrected(s) ? `${ACTIVITY[s.type].label} (corrected)` : 'Correct…', ''));
+    for (const t of CORRECTABLE) if (t !== s.type) pick.append(new Option(ACTIVITY[t].label, t));
+    if (isCorrected(s)) pick.append(new Option('Back to automatic', '__auto'));
+    pick.addEventListener('click', (e) => e.stopPropagation());
+    pick.addEventListener('change', () => {
+      if (!pick.value) return;
+      correctSegment(s, pick.value === '__auto' ? null : pick.value);
+    });
+    if (isCorrected(s)) title.append(el('span', 'seg-sub', '✎ corrected'));
+    main.append(title, el('div', 'seg-time', `${fmtTime(s.start)} – ${fmtTime(s.end)}`), pick);
     const right = el('div', 'seg-right');
     if (s.type !== 'stationary') right.append(el('div', null, fmtDistance(s.distance)));
     right.append(el('div', 'seg-dur', fmtDuration(s.end - s.start)));
@@ -505,7 +545,9 @@ function dayData(key) {
   const pts = info ? clean(state.points.slice(info.lo, info.hi)) : [];
   const d = dateOfKey(key);
   const spans = spansOverlapping(state.motion, d.getTime() / 1000, new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() / 1000);
-  const segs = segmentDay(pts, spans);
+  const dayStartT = d.getTime() / 1000, dayEndT = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() / 1000;
+  const fixes = [...state.corrections, ...localCorrections].filter((c) => c.end > dayStartT && c.start < dayEndT);
+  const segs = applyCorrections(segmentDay(pts, spans), fixes);
   const data = { key, points: pts, segments: segs, gap: gapThreshold(pts) };
   state.dayCache.set(key, data);
   if (info) info.distance = segs.reduce((sum, s) => sum + (s.type === 'stationary' ? 0 : s.distance), 0);
@@ -552,8 +594,12 @@ function placeAt(lat, lon) {
   return best;
 }
 
-function merge(newPoints, name, newMotion = []) {
+function merge(newPoints, name, newMotion = [], newCorrections = []) {
   if (newMotion.length) state.motion = normalizeSpans([...state.motion, ...newMotion]);
+  if (newCorrections.length) {
+    const seen = new Set(state.corrections.map((c) => `${c.start}|${c.end}|${c.act}`));
+    for (const c of newCorrections) { const k = `${c.start}|${c.end}|${c.act}`; if (!seen.has(k)) { seen.add(k); state.corrections.push(c); } }
+  }
   const seen = new Set();
   const all = [];
   for (const p of [...state.points, ...newPoints].sort((a, b) => a.t - b.t)) {
@@ -712,7 +758,7 @@ function askPassphrase(name, errorText) {
 
 function imported(contents, name, info) {
   const before = state.points.length;
-  merge(contents.points, name, contents.motion);
+  merge(contents.points, name, contents.motion, contents.corrections);
   const added = state.points.length - before;
   const from = info.kind && info.kind !== 'Pos XY' ? ` from ${info.kind}` : '';
   toast(`${name}: ${added.toLocaleString()} new point${added === 1 ? '' : 's'}${from}.`);
@@ -830,11 +876,12 @@ function wire() {
   $('refreshFiles').addEventListener('click', refreshServerFiles);
   $('loadAll').addEventListener('click', async () => { for (const f of serverFiles) if (!state.loadedNames.has(f.name)) await loadServerFile(f.name); });
   $('forget').addEventListener('click', () => {
-    if (customNames.length && !confirm('Forget all loaded data and your place names?')) return;
-    state.points = []; state.motion = []; state.loadedNames.clear(); state.lastPassphrase = null; state.places = [];
+    if ((customNames.length || localCorrections.length) && !confirm('Forget all loaded data, your place names and your activity corrections?')) return;
+    state.points = []; state.motion = []; state.corrections = []; state.loadedNames.clear(); state.lastPassphrase = null; state.places = [];
     state.day = null; state.mode = 'day';
     customNames = []; saveNames([]);
     try { localStorage.removeItem(NAMES_KEY); } catch { /* ignore */ }
+    localCorrections = []; try { localStorage.removeItem(CORRECTIONS_KEY); } catch { /* ignore */ }
     analysisRun++; state.analyzed = false;
     rebuildDays(); closeSearch(); markLoadedFiles(); render();
   });

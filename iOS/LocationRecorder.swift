@@ -89,7 +89,11 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     private var lastBackfillAttempt = Date.distantPast
     // Diagnostics (no coordinates are logged).
     private let diag = Diagnostics.shared
-    private var lastDelivery: Date?
+    private(set) var lastDelivery: Date?
+    // For "why no location lately?" (read by the main screen; not @Published, it refreshes on a timer).
+    private(set) var lastDroppedAccuracy: Double?
+    private(set) var lastDroppedAt: Date?
+    private(set) var stillSince: Date?
     private var lastLoggedAccuracy = ""
     private var stats = DeliveryStats()
 
@@ -289,6 +293,11 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         let type = ActivityType(motion: activity)
         guard type != .unknown else { return }
         if type != currentActivity { diag.log("motion", "Activity: \(type.rawValue).") }
+        if type == .stationary {
+            if stillSince == nil { stillSince = activity.startDate }
+        } else {
+            stillSince = nil
+        }
         currentActivity = type
         if type == .stationary {
             // Don't power down if we were just doing airliner speeds: smooth flight feels "stationary".
@@ -431,6 +440,29 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
                  + "\(stats.batches) deliveries (\(stats.backgroundBatches) in background), \(stats.recorded) recorded, "
                  + "\(acc)" + (dropped.isEmpty ? "." : "; dropped " + dropped.joined(separator: ", ") + "."))
         stats = DeliveryStats()
+    }
+
+    /// Everything RecordingHealth needs to explain a quiet spell.
+    func healthSnapshot(now: Date = Date()) -> RecordingHealth.Snapshot {
+        var s = RecordingHealth.Snapshot()
+        s.now = now
+        s.isRecording = isRecording
+        s.isPaused = isPaused
+        s.permissionProblem = authorization != .authorizedAlways || !preciseAllowed
+        s.interval = interval
+        s.nextPointAt = nextPointAt
+        s.isTakingPoint = isTakingPoint
+        s.lastPointAt = lastPoint?.t
+        s.lastDeliveryAt = lastDelivery
+        s.lastDroppedAccuracy = lastDroppedAccuracy
+        s.lastDroppedAt = lastDroppedAt
+        s.stillSince = stillSince
+        s.isGPSResting = isLowPower
+        s.appStartedAt = diag.launchedAt
+        s.launchedByIOS = diag.launchedByLocationEvent
+        s.previousRunEndedUnexpectedly = !diag.previousEndedCleanly
+        s.previousLastAlive = diag.previousLastAlive
+        return s
     }
 
     static func describe(_ status: CLAuthorizationStatus) -> String {
@@ -600,7 +632,11 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
 
     private func record(_ loc: CLLocation) {
         guard !isPaused else { stats.droppedPaused += 1; return }
-        guard loc.horizontalAccuracy >= 0, loc.horizontalAccuracy <= 200 else { stats.droppedAccuracy += 1; return }
+        guard loc.horizontalAccuracy >= 0, loc.horizontalAccuracy <= 200 else {
+            stats.droppedAccuracy += 1
+            if loc.horizontalAccuracy > 200 { lastDroppedAccuracy = loc.horizontalAccuracy; lastDroppedAt = Date() }
+            return
+        }
         if let last = lastPoint, loc.timestamp <= last.t { stats.droppedStale += 1; return }
         stats.recorded += 1
 

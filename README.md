@@ -173,6 +173,23 @@ Between timed points the app keeps only a coarse location session open (no GPS).
 
 The viewers adapt automatically. A silence only counts as a gap when it's longer than 2.5× the typical spacing between points, so a 15-minute schedule still gives walk/drive/flight segments rather than a row of unknown gaps. `web/tests` checks the same day sampled every 1, 5, 15 and 60 minutes against the Swift results.
 
+## Correcting activities
+
+Pos XY can't tell a train from a car, since both are fast and smooth. To fix a trip, tap it in **History** on the iPhone and pick what it really was: Walk, Run, Bike, Drive, **Train**, **Bus**, **Boat**, Flight or Stay. "Back to automatic" undoes the correction.
+
+Corrections are stored by time range on the phone and included in exports, so the Mac and web viewers show them too. The web viewer has a **Correct…** menu on each trip as well; corrections made there are saved in that browser, and **Forget all** clears them. Google Timeline imports that say "in train", "in bus" or "in ferry" come in as Train, Bus and Boat.
+
+## Why no new point lately?
+
+When the last point is more than a few minutes old, the main screen explains why, for example:
+- "You've been still since 2:10 PM. Pos XY saves a point once you've moved about 15 m."
+- "Weak GPS signal: the last fix was ±450 m, too rough to save."
+- "iOS stopped Pos XY around 1:02 PM and restarted it at 1:40 PM when you moved."
+- "Timed mode: the next point is due at 3:05 PM."
+- "No location updates from iOS for 25 min."
+
+Tap the explanation to open Diagnostics for the full log.
+
 ## Missing points? (Diagnostics)
 
 If recording stops when the app isn't open, check these first:

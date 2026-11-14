@@ -29,12 +29,15 @@ struct ExportFile: Codable {
     var points: [TrackPoint]
     /// Motion-coprocessor history (optional; omitted when empty). See docs/FORMAT.md §2.1.
     var motion: [MotionSpan]?
+    /// Manual activity corrections (optional; omitted when empty). See docs/FORMAT.md §2.2.
+    var corrections: [ActivityCorrection]?
 }
 
 /// What a file contained.
 struct ExportContents {
     var points: [TrackPoint]
     var motion: [MotionSpan] = []
+    var corrections: [ActivityCorrection] = []
 }
 
 /// Locked file layout (`.pxy`):
@@ -52,8 +55,10 @@ enum ExportCodec {
     static let defaultIterations: UInt32 = 600_000
     private static var headerLength: Int { magic.count + 16 + 4 }
 
-    static func makeJSON(_ points: [TrackPoint], motion: [MotionSpan] = []) throws -> Data {
-        try TrackJSON.encoder().encode(ExportFile(exportedAt: Date(), points: points, motion: motion.isEmpty ? nil : motion))
+    static func makeJSON(_ points: [TrackPoint], motion: [MotionSpan] = [], corrections: [ActivityCorrection] = []) throws -> Data {
+        try TrackJSON.encoder().encode(ExportFile(exportedAt: Date(), points: points,
+                                                  motion: motion.isEmpty ? nil : motion,
+                                                  corrections: corrections.isEmpty ? nil : corrections))
     }
 
     static func isEncrypted(_ data: Data) -> Bool {
@@ -136,7 +141,8 @@ enum ExportCodec {
         }
         let dec = TrackJSON.decoder()
         if let file = try? dec.decode(ExportFile.self, from: json) {
-            return ExportContents(points: file.points, motion: MotionSpans.normalized(file.motion ?? []))
+            return ExportContents(points: file.points, motion: MotionSpans.normalized(file.motion ?? []),
+                                  corrections: Corrections.normalized(file.corrections ?? []))
         }
         if let pts = try? dec.decode([TrackPoint].self, from: json) { return ExportContents(points: pts) }
         var out: [TrackPoint] = []

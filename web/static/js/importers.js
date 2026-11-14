@@ -9,9 +9,9 @@ const GOOGLE_ACTIVITY = {
   STILL: 'stationary', WALKING: 'walking', ON_FOOT: 'walking', RUNNING: 'running',
   ON_BICYCLE: 'cycling', CYCLING: 'cycling', FLYING: 'flying',
   IN_VEHICLE: 'driving', IN_ROAD_VEHICLE: 'driving', IN_CAR: 'driving', IN_PASSENGER_VEHICLE: 'driving',
-  IN_BUS: 'driving', IN_TAXI: 'driving', MOTORCYCLING: 'driving', IN_TRAIN: 'driving', IN_SUBWAY: 'driving',
-  IN_TRAM: 'driving', IN_RAIL_VEHICLE: 'driving', IN_FERRY: 'driving', IN_BOAT: 'driving', IN_CABLECAR: 'driving',
-  IN_GONDOLA_LIFT: 'driving', IN_WHEELCHAIR: 'walking', SKIING: 'unknown', SAILING: 'driving',
+  IN_BUS: 'bus', IN_TAXI: 'driving', MOTORCYCLING: 'driving', IN_TRAIN: 'train', IN_SUBWAY: 'train',
+  IN_TRAM: 'train', IN_RAIL_VEHICLE: 'train', IN_FERRY: 'boat', IN_BOAT: 'boat', IN_CABLECAR: 'driving',
+  IN_GONDOLA_LIFT: 'driving', IN_WHEELCHAIR: 'walking', SKIING: 'unknown', SAILING: 'boat',
 };
 export const googleActivity = (type) => GOOGLE_ACTIVITY[String(type ?? '').toUpperCase().trim().replace(/[\s-]+/g, '_').replace(/[^A-Z_]/g, '')] ?? 'unknown';
 
