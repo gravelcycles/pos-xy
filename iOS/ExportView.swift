@@ -132,7 +132,8 @@ struct ExportView: View {
             result = try await Task.detached(priority: .userInitiated) { () throws -> ExportResult in
                 let points = PointStore.shared.points(from: start, to: end)
                 guard let first = points.first, let last = points.last else { throw ExportError.nothingToExport }
-                let json = try ExportCodec.makeJSON(points)
+                let motion = MotionStore.shared.spans(from: min(start, first.t), to: max(end == .distantFuture ? last.t : end, last.t))
+                let json = try ExportCodec.makeJSON(points, motion: motion)
                 let data: Data
                 let ext: String
                 if let pass {

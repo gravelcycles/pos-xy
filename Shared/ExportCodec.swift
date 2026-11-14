@@ -27,6 +27,14 @@ struct ExportFile: Codable {
     var version: Int = 1
     var exportedAt: Date
     var points: [TrackPoint]
+    /// Motion-coprocessor history (optional; omitted when empty). See docs/FORMAT.md §2.1.
+    var motion: [MotionSpan]?
+}
+
+/// What a file contained.
+struct ExportContents {
+    var points: [TrackPoint]
+    var motion: [MotionSpan] = []
 }
 
 /// Locked file layout (`.pxy`):
@@ -44,8 +52,8 @@ enum ExportCodec {
     static let defaultIterations: UInt32 = 600_000
     private static var headerLength: Int { magic.count + 16 + 4 }
 
-    static func makeJSON(_ points: [TrackPoint]) throws -> Data {
-        try TrackJSON.encoder().encode(ExportFile(exportedAt: Date(), points: points))
+    static func makeJSON(_ points: [TrackPoint], motion: [MotionSpan] = []) throws -> Data {
+        try TrackJSON.encoder().encode(ExportFile(exportedAt: Date(), points: points, motion: motion.isEmpty ? nil : motion))
     }
 
     static func isEncrypted(_ data: Data) -> Bool {
@@ -116,7 +124,7 @@ enum ExportCodec {
 
     /// Reads any of: locked `.pxy`, exported JSON, a bare JSON array, a raw `.jsonl` day file,
     /// or a foreign format (Google Takeout / Timeline, GPX: see Importers).
-    static func decodePoints(_ data: Data, passphrase: String?) throws -> [TrackPoint] {
+    static func decode(_ data: Data, passphrase: String?) throws -> ExportContents {
         var json = data
         if isEncrypted(data) {
             guard let pw = passphrase, !pw.isEmpty else { throw ExportError.passphraseRequired }
@@ -124,16 +132,23 @@ enum ExportCodec {
         }
         if let foreign = Importers.importForeign(json) {
             if foreign.points.isEmpty { throw ExportError.unreadable }
-            return foreign.points
+            return ExportContents(points: foreign.points)
         }
         let dec = TrackJSON.decoder()
-        if let file = try? dec.decode(ExportFile.self, from: json) { return file.points }
-        if let pts = try? dec.decode([TrackPoint].self, from: json) { return pts }
+        if let file = try? dec.decode(ExportFile.self, from: json) {
+            return ExportContents(points: file.points, motion: MotionSpans.normalized(file.motion ?? []))
+        }
+        if let pts = try? dec.decode([TrackPoint].self, from: json) { return ExportContents(points: pts) }
         var out: [TrackPoint] = []
         for line in json.split(separator: UInt8(ascii: "\n")) {
             if let p = try? dec.decode(TrackPoint.self, from: Data(line)) { out.append(p) }
         }
         if out.isEmpty { throw ExportError.unreadable }
-        return out
+        return ExportContents(points: out)
     }
+    /// Points only (see `decode` for motion history too).
+    static func decodePoints(_ data: Data, passphrase: String?) throws -> [TrackPoint] {
+        try decode(data, passphrase: passphrase).points
+    }
+
 }

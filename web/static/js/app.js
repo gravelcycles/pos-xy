@@ -1,6 +1,6 @@
 // Pos XY web viewer. Everything happens in this tab: files are decrypted here and kept in memory.
-import { decodePoints, isLocked, FormatError } from './format.js';
-import { ACTIVITY, ACTIVITY_ORDER, isDashed, clean, segments as segmentDay, totals, gapThreshold, distance } from './segmenter.js';
+import { decodeFile, isLocked, FormatError } from './format.js';
+import { ACTIVITY, ACTIVITY_ORDER, isDashed, clean, segments as segmentDay, totals, gapThreshold, distance, normalizeSpans, spansOverlapping } from './segmenter.js';
 import { staysFromDay, detectPlaces, PLACE_RADIUS } from './places.js';
 import { toGPX } from './importers.js';
 
@@ -11,6 +11,7 @@ const PLACE_ICON = { home: '🏠', work: '💼' };
 // ---------------------------------------------------------------- state
 const state = {
   points: [],             // all loaded points, sorted, de-duplicated
+  motion: [],             // motion-coprocessor spans from the files, sorted (label gaps without points)
   days: [],               // [{ key, date, count, distance? }] newest first
   dayCache: new Map(),
   loadedNames: new Set(),
@@ -502,7 +503,9 @@ function dayData(key) {
   if (state.dayCache.has(key)) return state.dayCache.get(key);
   const info = state.dayIndex?.get(key);
   const pts = info ? clean(state.points.slice(info.lo, info.hi)) : [];
-  const segs = segmentDay(pts);
+  const d = dateOfKey(key);
+  const spans = spansOverlapping(state.motion, d.getTime() / 1000, new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() / 1000);
+  const segs = segmentDay(pts, spans);
   const data = { key, points: pts, segments: segs, gap: gapThreshold(pts) };
   state.dayCache.set(key, data);
   if (info) info.distance = segs.reduce((sum, s) => sum + (s.type === 'stationary' ? 0 : s.distance), 0);
@@ -549,7 +552,8 @@ function placeAt(lat, lon) {
   return best;
 }
 
-function merge(newPoints, name) {
+function merge(newPoints, name, newMotion = []) {
+  if (newMotion.length) state.motion = normalizeSpans([...state.motion, ...newMotion]);
   const seen = new Set();
   const all = [];
   for (const p of [...state.points, ...newPoints].sort((a, b) => a.t - b.t)) {
@@ -706,9 +710,9 @@ function askPassphrase(name, errorText) {
   });
 }
 
-function imported(pts, name, info) {
+function imported(contents, name, info) {
   const before = state.points.length;
-  merge(pts, name);
+  merge(contents.points, name, contents.motion);
   const added = state.points.length - before;
   const from = info.kind && info.kind !== 'Pos XY' ? ` from ${info.kind}` : '';
   toast(`${name}: ${added.toLocaleString()} new point${added === 1 ? '' : 's'}${from}.`);
@@ -717,11 +721,11 @@ function imported(pts, name, info) {
 async function loadBytes(bytes, name) {
   if (!isLocked(bytes)) {
     const info = {};
-    try { imported(await decodePoints(bytes, undefined, info), name, info); } catch (e) { alert(`${name}: ${e.message}`); }
+    try { imported(await decodeFile(bytes, undefined, info), name, info); } catch (e) { alert(`${name}: ${e.message}`); }
     return;
   }
   if (state.lastPassphrase) {
-    try { imported(await decodePoints(bytes, state.lastPassphrase), name, {}); return; } catch { /* ask below */ }
+    try { imported(await decodeFile(bytes, state.lastPassphrase), name, {}); return; } catch { /* ask below */ }
   }
   passQueue.push({ bytes, name });
   if (passBusy) return;
@@ -729,14 +733,14 @@ async function loadBytes(bytes, name) {
   while (passQueue.length) {
     const job = passQueue.shift();
     if (state.lastPassphrase) {
-      try { imported(await decodePoints(job.bytes, state.lastPassphrase), job.name, {}); continue; } catch { /* ask */ }
+      try { imported(await decodeFile(job.bytes, state.lastPassphrase), job.name, {}); continue; } catch { /* ask */ }
     }
     let error = null;
     for (;;) {
       const pass = await askPassphrase(job.name, error);
       if (pass === null) break;
       try {
-        const pts = await decodePoints(job.bytes, pass);
+        const pts = await decodeFile(job.bytes, pass);
         state.lastPassphrase = pass;
         imported(pts, job.name, {});
         break;
@@ -827,7 +831,7 @@ function wire() {
   $('loadAll').addEventListener('click', async () => { for (const f of serverFiles) if (!state.loadedNames.has(f.name)) await loadServerFile(f.name); });
   $('forget').addEventListener('click', () => {
     if (customNames.length && !confirm('Forget all loaded data and your place names?')) return;
-    state.points = []; state.loadedNames.clear(); state.lastPassphrase = null; state.places = [];
+    state.points = []; state.motion = []; state.loadedNames.clear(); state.lastPassphrase = null; state.places = [];
     state.day = null; state.mode = 'day';
     customNames = []; saveNames([]);
     try { localStorage.removeItem(NAMES_KEY); } catch { /* ignore */ }

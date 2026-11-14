@@ -127,7 +127,61 @@ function runs(edges) {
   return result;
 }
 
-export function segments(p) {
+// ---- Motion history (port of Shared/MotionSpan.swift). Spans: { start, end, act }, sorted.
+export const MOVING = ['walking', 'running', 'cycling', 'driving'];
+
+export function normalizeSpans(spans) {
+  const seen = new Set();
+  return spans.filter((s) => s.end > s.start)
+    .sort((a, b) => (a.start !== b.start ? a.start - b.start : a.end - b.end))
+    .filter((s) => { const k = `${s.start}|${s.act}`; if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
+function firstEndingAfter(t, spans) {
+  let lo = 0, hi = spans.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (spans[mid].end <= t) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+
+export function activityAt(t, spans) {
+  const i = firstEndingAfter(t, spans);
+  return i < spans.length && spans[i].start <= t ? spans[i].act : null;
+}
+
+export function dominantMoving(a, b, spans) {
+  if (!(b > a) || !spans.length) return null;
+  let total = 0;
+  const byType = new Map();
+  for (let i = firstEndingAfter(a, spans); i < spans.length && spans[i].start < b; i++) {
+    const s = spans[i];
+    if (!MOVING.includes(s.act)) continue;
+    const overlap = Math.min(s.end, b) - Math.max(s.start, a);
+    if (overlap > 0) { byType.set(s.act, (byType.get(s.act) ?? 0) + overlap); total += overlap; }
+  }
+  if (total < Math.min(180, 0.2 * (b - a))) return null;
+  let best = null, bestValue = -1;
+  for (const t of MOVING) { const v = byType.get(t); if (v !== undefined && v > bestValue) { best = t; bestValue = v; } }
+  return best;
+}
+
+export function fillActivities(points, spans) {
+  if (!spans.length) return points;
+  return points.map((p) => {
+    if (p.act && p.act !== 'unknown') return p;
+    const a = activityAt(p.t, spans);
+    return a ? { ...p, act: a } : p;
+  });
+}
+
+export function spansOverlapping(spans, a, b) {
+  const out = [];
+  for (let i = firstEndingAfter(a, spans); i < spans.length && spans[i].start < b; i++) out.push(spans[i]);
+  return out;
+}
+
+/** `motion`: optional sorted motion spans; they label untagged points and point-less gaps. */
+export function segments(points, motion = []) {
+  const p = fillActivities(points, motion);
   const n = p.length;
   if (n < 2) return [];
   const gap = gapThreshold(p);
@@ -139,7 +193,7 @@ export function segments(p) {
     edgeDist[i] = d;
     if (dt > gap) {
       isGap[i] = true;
-      edge[i] = d < 300 ? 'stationary' : (d / dt > 50 ? 'flying' : 'unknown');
+      edge[i] = d < 300 ? 'stationary' : d / dt > 50 ? 'flying' : (dominantMoving(p[i].t, p[i + 1].t, motion) ?? 'unknown');
     } else {
       edge[i] = labels[i + 1];
     }

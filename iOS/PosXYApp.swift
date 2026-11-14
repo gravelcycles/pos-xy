@@ -48,6 +48,7 @@ struct RootView: View {
             case .background: lock.lockIfEnabled()
             case .active:
                 recorder.refreshTodayCount()
+                recorder.backfillMotion(reason: "opened")
                 PlaceCache.shared.refresh()
                 lock.unlockIfPending()
             default: break

@@ -76,6 +76,20 @@ export function normalizePoint(o) {
  * (Google Takeout / Timeline, GPX — see importers.js). Pass `info` to learn which format it was.
  */
 export async function decodePoints(bytes, passphrase, info = {}) {
+  return (await decodeFile(bytes, passphrase, info)).points;
+}
+
+const SPAN_ACTS = new Set(['stationary', 'walking', 'running', 'cycling', 'driving', 'flying']);
+/** Motion span ({ start, end, act }) or null if unusable. */
+export function normalizeSpan(o) {
+  if (!o || typeof o !== 'object') return null;
+  const start = Number(o.start), end = Number(o.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || !SPAN_ACTS.has(o.act)) return null;
+  return { start, end, act: o.act };
+}
+
+/** Like decodePoints, but returns { points, motion } (motion spans, unsorted; see segmenter.normalizeSpans). */
+export async function decodeFile(bytes, passphrase, info = {}) {
   if (isLocked(bytes)) {
     if (!passphrase) throw new FormatError('passphrase', 'This file is locked. Enter its passphrase.');
     bytes = await decrypt(bytes, passphrase);
@@ -83,6 +97,7 @@ export async function decodePoints(bytes, passphrase, info = {}) {
   const text = new TextDecoder().decode(bytes);
   info.kind = 'Pos XY';
   let raw = null;
+  let motionRaw = [];
   let parsed;
   try { parsed = JSON.parse(text); } catch { /* maybe JSON Lines or GPX */ }
   const foreign = importForeign(text, parsed);
@@ -94,6 +109,7 @@ export async function decodePoints(bytes, passphrase, info = {}) {
   } else if (parsed && parsed.format === 'pos-xy' && Array.isArray(parsed.points)) {
     if (Number(parsed.version) > 1) console.warn('Newer pos-xy version; reading what we understand.');
     raw = parsed.points;
+    if (Array.isArray(parsed.motion)) motionRaw = parsed.motion;
   }
   if (raw === null) {
     raw = [];
@@ -103,8 +119,9 @@ export async function decodePoints(bytes, passphrase, info = {}) {
     }
   }
   const points = raw.map(normalizePoint).filter(Boolean);
+  const motion = motionRaw.map(normalizeSpan).filter(Boolean);
   if (points.length === 0) {
     throw new FormatError('unreadable', "No location points found. Supported: Pos XY, Google Takeout / Timeline, GPX.");
   }
-  return points;
+  return { points, motion };
 }

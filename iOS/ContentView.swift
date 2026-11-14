@@ -175,6 +175,7 @@ struct ContentView: View {
                                 isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete everything", role: .destructive) {
                     PointStore.shared.deleteAll()
+                    MotionStore.shared.deleteAll()
                     recorder.refreshTodayCount()
                     placeCache.refresh(force: true)
                     Task { await reloadToday() }
@@ -207,7 +208,8 @@ struct ContentView: View {
         let result = await Task.detached(priority: .utility) { () -> ([TrackPoint], [Segment], Int, Int) in
             let store = PointStore.shared
             let pts = Segmenter.clean(store.points(dayKey: key))
-            return (pts, Segmenter.segments(pts), store.totalBytes(), store.dayKeys().count)
+            let motion = MotionStore.shared.spans(dayKey: key)
+            return (pts, Segmenter.segments(pts, motion: motion), store.totalBytes(), store.dayKeys().count)
         }.value
         todayPoints = result.0
         todaySegments = result.1

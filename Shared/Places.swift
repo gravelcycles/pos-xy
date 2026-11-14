@@ -162,11 +162,11 @@ enum Places {
 
     /// Detects places across many days. `days` are raw points grouped however; each group is
     /// cleaned and segmented. Can be slow for years of data: call off the main thread.
-    static func detect(days: [[TrackPoint]]) -> [Place] {
+    static func detect(days: [[TrackPoint]], motion: [MotionSpan] = []) -> [Place] {
         var all: [Stay] = []
         for raw in days {
             let pts = Segmenter.clean(raw)
-            all += stays(points: pts, segments: Segmenter.segments(pts))
+            all += stays(points: pts, segments: Segmenter.segments(pts, motion: motion))
         }
         return detect(all)
     }

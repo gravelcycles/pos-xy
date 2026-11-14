@@ -54,7 +54,7 @@ final class TrackLibrary: ObservableObject {
     private func ingest(_ data: Data, name: String) {
         if ExportCodec.isEncrypted(data) {
             // Try the passphrase that worked last time before asking again.
-            if let pw = lastPassphrase, let pts = try? ExportCodec.decodePoints(data, passphrase: pw) {
+            if let pw = lastPassphrase, let pts = try? ExportCodec.decode(data, passphrase: pw) {
                 merge(pts, name: name)
             } else {
                 locked.append(LockedFile(name: name, data: data))
@@ -62,19 +62,19 @@ final class TrackLibrary: ObservableObject {
             return
         }
         do {
-            merge(try ExportCodec.decodePoints(data, passphrase: nil), name: name)
+            merge(try ExportCodec.decode(data, passphrase: nil), name: name)
         } catch {
             errorMessage = "\(name): \(error.localizedDescription)"
         }
     }
 
     func unlock(_ file: LockedFile, passphrase: String) throws {
-        let pts = try ExportCodec.decodePoints(file.data, passphrase: passphrase)
+        let pts = try ExportCodec.decode(file.data, passphrase: passphrase)
         lastPassphrase = passphrase
         locked.removeAll { $0.id == file.id }
         merge(pts, name: file.name)
         for other in locked {
-            if let more = try? ExportCodec.decodePoints(other.data, passphrase: passphrase) {
+            if let more = try? ExportCodec.decode(other.data, passphrase: passphrase) {
                 locked.removeAll { $0.id == other.id }
                 merge(more, name: other.name)
             }
@@ -92,11 +92,17 @@ final class TrackLibrary: ObservableObject {
         locked = []
         cache = [:]
         lastPassphrase = nil
+        motion = []
         version += 1
         places = []
     }
 
-    private func merge(_ new: [TrackPoint], name: String) {
+    /// Motion-coprocessor history from the loaded files (labels gaps without points).
+    private(set) var motion: [MotionSpan] = []
+
+    private func merge(_ contents: ExportContents, name: String) {
+        if !contents.motion.isEmpty { motion = MotionSpans.normalized(motion + contents.motion) }
+        let new = contents.points
         var seen = Set<Int64>()
         var all: [TrackPoint] = []
         all.reserveCapacity(points.count + new.count)
@@ -119,11 +125,12 @@ final class TrackLibrary: ObservableObject {
 
     private func refreshPlaces() {
         let snapshot = points
+        let motionSnapshot = motion
         let forVersion = version
         DispatchQueue.global(qos: .utility).async {
             let cal = Calendar.current
             let groups = Dictionary(grouping: snapshot) { cal.startOfDay(for: $0.t) }
-            let detected = Places.detect(days: groups.keys.sorted().compactMap { groups[$0] })
+            let detected = Places.detect(days: groups.keys.sorted().compactMap { groups[$0] }, motion: motionSnapshot)
             DispatchQueue.main.async {
                 if self.version == forVersion { self.places = detected }
             }
@@ -136,7 +143,9 @@ final class TrackLibrary: ObservableObject {
         let next = Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day.addingTimeInterval(86_400)
         let lo = lowerBound(day), hi = lowerBound(next)
         let cleaned = Segmenter.clean(Array(points[lo..<hi]))
-        let data = DayData(points: cleaned, segments: Segmenter.segments(cleaned), gap: Segmenter.gapThreshold(cleaned))
+        let dayMotion = MotionSpans.overlapping(motion, from: day, to: next)
+        let data = DayData(points: cleaned, segments: Segmenter.segments(cleaned, motion: dayMotion),
+                           gap: Segmenter.gapThreshold(cleaned))
         cache[day] = data
         return data
     }

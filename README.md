@@ -181,7 +181,14 @@ If recording stops when the app isn't open, check these first:
 
 Then open **Diagnostics** on the main screen. It shows a health check, including whether iOS had to relaunch the app and whether the previous run ended without warning. It also keeps an event log: launches, permission changes, GPS power changes, location deliveries, drops and gaps. The log never contains coordinates, so **Share log** is safe to AirDrop to your Mac for debugging. It's kept for 14 days on the phone.
 
-To keep background recording alive, Pos XY holds an iOS background-activity session while recording. It also uses two system triggers that relaunch the app if iOS shuts it down: significant location changes (after about 500 m of movement) and visits. Both triggers need the "Always" permission.
+To keep background recording alive, Pos XY holds an iOS background-activity session while recording. If iOS shuts the app down anyway, three system triggers bring it back, all of which need the "Always" permission:
+- a **rolling geofence**: a 150 m circle around your latest point, moved as you go, which relaunches the app once you leave it;
+- **significant location changes**, after about 500 m of movement;
+- **visits**, when you arrive at or leave a place.
+
+The diagnostics log shows each of these wake-ups ("Left the 150 m geofence: iOS woke the app").
+
+**Motion history fills the gaps.** The iPhone's motion chip keeps 7 days of walk/run/bike/drive history, even while Pos XY isn't running. Each time the app wakes up, it saves that history on the phone as part of your data, and exports include it. The viewers then label a gap with no GPS points from what you were actually doing. A drive during which iOS had suspended the app shows as one Drive, drawn as a straight line between the last and next points, instead of an "unknown" gap.
 
 ## Battery
 

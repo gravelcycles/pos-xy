@@ -22,8 +22,8 @@ check() {  # label, swift output file, js output file
   if diff -q "$2" "$3" >/dev/null; then echo "OK        $1"; else echo "MISMATCH  $1"; diff "$2" "$3" | head -20; fail=1; fi
 }
 
-build segments $S/TrackPoint.swift $S/ActivityType.swift $S/Segmenter.swift
-build places   $S/TrackPoint.swift $S/ActivityType.swift $S/Segmenter.swift $S/Places.swift
+build segments $S/TrackPoint.swift $S/ActivityType.swift $S/MotionSpan.swift $S/Segmenter.swift
+build places   $S/TrackPoint.swift $S/ActivityType.swift $S/MotionSpan.swift $S/Segmenter.swift $S/Places.swift
 build imports  $S/TrackPoint.swift $S/ActivityType.swift $S/Importers.swift
 
 for f in web/tests/fixtures/sample-day*.json web/tests/fixtures/week.json; do

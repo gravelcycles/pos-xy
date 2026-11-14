@@ -14,7 +14,7 @@ A private location history ("my own Google Maps Timeline"):
 ## Layout
 ```
 PosXY.xcodeproj   hand-written, objectVersion 77, "synchronized folder" groups (Xcode 16+)
-Shared/           Swift used by BOTH apps: TrackPoint, ActivityType, Segmenter, Places, Importers, ExportCodec, Formatting
+Shared/           Swift used by BOTH apps: TrackPoint, ActivityType, MotionSpan, Segmenter, Places, Importers, ExportCodec, Formatting
 iOS/              iPhone app target "PosXY"   (bundle $(APP_BUNDLE_ID) = io.github.gravelcycles.posxy, iOS 17+)
 iOSShared/        Swift compiled into BOTH PosXY and PosXYWidgets: RecordingStatus (shared keychain item), control intents
 Widgets/          widget extension target "PosXYWidgets" ($(APP_BUNDLE_ID).widgets, iOS 18+): status widget + controls
@@ -32,7 +32,7 @@ scripts/          deploy-iphone.sh, install-mac-viewer.sh, parity/run.sh, ci-sim
 
 ## Commands
 ```sh
-node --test web/tests/*.test.mjs                    # 30 JS tests: format vectors, importers, segmenter + places goldens
+node --test web/tests/*.test.mjs                    # 34 JS tests: format vectors, importers, segmenter, places + motion goldens
 scripts/parity/run.sh                               # Swift vs JS on every fixture (needs Xcode's swiftc + node)
 python3 docs/test-vectors/make_vectors.py --check   # crypto vectors, independent impl (pip install cryptography)
 python3 web/serve.py                                # web viewer on http://localhost:8765, lists ~/Downloads

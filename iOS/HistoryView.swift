@@ -15,7 +15,10 @@ struct HistoryView: View {
                 }
             }
             .onDelete { offsets in
-                for i in offsets { PointStore.shared.delete(dayKey: days[i]) }
+                for i in offsets {
+                    PointStore.shared.delete(dayKey: days[i])
+                    MotionStore.shared.delete(dayKey: days[i])
+                }
                 days.remove(atOffsets: offsets)
                 recorder.refreshTodayCount()
                 PlaceCache.shared.refresh(force: true)
@@ -100,7 +103,7 @@ struct DayView: View {
         let key = dayKey
         let result = await Task.detached(priority: .userInitiated) { () -> ([TrackPoint], [Segment]) in
             let pts = Segmenter.clean(PointStore.shared.points(dayKey: key))
-            return (pts, Segmenter.segments(pts))
+            return (pts, Segmenter.segments(pts, motion: MotionStore.shared.spans(dayKey: key)))
         }.value
         points = result.0
         segments = result.1
