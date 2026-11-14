@@ -93,3 +93,10 @@ sleep 5
 xcrun simctl io "$UDID" screenshot "$OUT/iphone-today-later.png"
 cp "$TRACKS"/*.jsonl "$OUT/" 2>/dev/null || true
 echo "Total recorded: $(count) points"
+
+# Diagnostics log (no coordinates): keep it with the artifacts and show the end of it.
+DIAG="$DATA/Library/Application Support/Diagnostics"
+cp "$DIAG"/*.log "$OUT/" 2>/dev/null || true
+echo "---- diagnostics log (tail) ----"
+tail -n 40 "$DIAG"/*.log 2>/dev/null || echo "::warning::No diagnostics log was written"
+grep -q "Launched normally" "$DIAG"/*.log 2>/dev/null || { echo "::error::Diagnostics log is missing launch entries"; exit 1; }

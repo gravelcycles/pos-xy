@@ -173,6 +173,16 @@ Between timed points the app keeps only a coarse location session open (no GPS).
 
 The viewers adapt automatically. A silence only counts as a gap when it's longer than 2.5× the typical spacing between points, so a 15-minute schedule still gives walk/drive/flight segments rather than a row of unknown gaps. `web/tests` checks the same day sampled every 1, 5, 15 and 60 minutes against the Swift results.
 
+## Missing points? (Diagnostics)
+
+If recording stops when the app isn't open, check these first:
+1. **Settings → Pos XY → Location → Always**, with **Precise Location** on. With "While Using", iOS stops recording soon after you leave the app and doesn't restart it.
+2. **Don't swipe Pos XY away** in the app switcher. That stops recording until you open it again.
+
+Then open **Diagnostics** on the main screen. It shows a health check, including whether iOS had to relaunch the app and whether the previous run ended without warning. It also keeps an event log: launches, permission changes, GPS power changes, location deliveries, drops and gaps. The log never contains coordinates, so **Share log** is safe to AirDrop to your Mac for debugging. It's kept for 14 days on the phone.
+
+To keep background recording alive, Pos XY holds an iOS background-activity session while recording. It also uses two system triggers that relaunch the app if iOS shuts it down: significant location changes (after about 500 m of movement) and visits. Both triggers need the "Always" permission.
+
 ## Battery
 
 Smart mode uses full GPS while you're moving (a point every 15 m) and drops to coarse location when the motion chip says you're stationary. Most of the battery cost is GPS time while moving, so it depends on how much you travel. iOS also relaunches the app after a reboot once you've moved about 500 m. **Don't force-quit it** from the app switcher: that stops background recording until you open it again.

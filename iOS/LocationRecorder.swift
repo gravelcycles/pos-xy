@@ -1,6 +1,7 @@
 import Foundation
 import CoreLocation
 import CoreMotion
+import UIKit
 
 /// Records GPS fixes in the foreground and background and tags each one with what the
 /// motion coprocessor thinks you're doing.
@@ -75,6 +76,20 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     private var tickTimer: Timer?
     private var pointStartedAt: Date?
     private var bestCandidate: CLLocation?
+    // Keeps background location alive (iOS 17+); held while recording.
+    private var backgroundSession: CLBackgroundActivitySession?
+    // Diagnostics (no coordinates are logged).
+    private let diag = Diagnostics.shared
+    private var lastDelivery: Date?
+    private var lastLoggedAccuracy = ""
+    private var stats = DeliveryStats()
+
+    private struct DeliveryStats {
+        var since = Date()
+        var batches = 0, backgroundBatches = 0, recorded = 0
+        var droppedAccuracy = 0, droppedStale = 0, droppedPaused = 0
+        var bestAccuracy = Double.infinity, worstAccuracy = 0.0
+    }
 
     private override init() {
         isRecording = UserDefaults.standard.bool(forKey: Keys.recording)
@@ -88,6 +103,12 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         preciseAllowed = manager.accuracyAuthorization == .fullAccuracy
         lastPoint = store.lastPoint()
         refreshTodayCount()
+        diag.log("recorder", "Init: recording \(isRecording ? "ON" : "off"), \(Self.describe(interval: interval).lowercased()), "
+                 + "GPS mode \(powerMode.rawValue), permission \(Self.describe(authorization)), "
+                 + "precise \(preciseAllowed ? "on" : "OFF")\(isPaused ? ", paused" : "").")
+        if let last = lastPoint {
+            diag.log("recorder", "Last stored point is \(Diagnostics.duration(Date().timeIntervalSince(last.t))) old.")
+        }
         if isRecording { beginUpdates() }
         WidgetSync.publish(widgetStatus, force: true)
     }
@@ -95,6 +116,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     // MARK: Control
 
     func start() {
+        diag.log("recorder", "Start pressed.")
         isRecording = true
         defaults.set(true, forKey: Keys.recording)
         switch manager.authorizationStatus {
@@ -114,12 +136,16 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     func stop() {
+        diag.log("recorder", "Stop pressed.")
         isRecording = false
         defaults.set(false, forKey: Keys.recording)
         manager.stopUpdatingLocation()
         manager.stopMonitoringSignificantLocationChanges()
         motion.stopActivityUpdates()
         manager.allowsBackgroundLocationUpdates = false
+        manager.stopMonitoringVisits()
+        backgroundSession?.invalidate()
+        backgroundSession = nil
         isLowPower = false
         pausedUntil = nil
         defaults.removeObject(forKey: Keys.pausedUntil)
@@ -146,20 +172,31 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     private func beginUpdates() {
         manager.allowsBackgroundLocationUpdates = true
         manager.pausesLocationUpdatesAutomatically = false   // never let iOS silently stop us
-        manager.showsBackgroundLocationIndicator = false
+        // With only "While Using" permission, iOS keeps background updates going only while the
+        // blue location pill is shown; with Always it's not needed.
+        manager.showsBackgroundLocationIndicator = manager.authorizationStatus != .authorizedAlways
         manager.activityType = .other
+        // iOS 17+: an explicit background-activity session keeps location delivery alive while the
+        // app isn't on screen. Created here (usually in the foreground) and held until Stop.
+        if backgroundSession == nil { backgroundSession = CLBackgroundActivitySession() }
         isLowPower = false
         applyAccuracy()
         manager.startUpdatingLocation()
         configureSchedule()
-        // Lets iOS relaunch the app after it was killed (e.g. phone restart) once you move ~500 m.
+        // Both of these let iOS relaunch the app after it was killed (memory pressure, reboot):
+        // significant changes after ~500 m of movement, visits when you arrive or leave a place.
+        // They only work with Always permission.
         if CLLocationManager.significantLocationChangeMonitoringAvailable() {
             manager.startMonitoringSignificantLocationChanges()
         }
+        manager.startMonitoringVisits()
         startMotion()
+        diag.log("recorder", "Updates started (permission \(Self.describe(manager.authorizationStatus)), "
+                 + "background indicator \(manager.showsBackgroundLocationIndicator ? "on" : "off")).")
     }
 
     private func applyAccuracy() {
+        defer { logAccuracyIfChanged() }
         if isPaused {
             // Paused: no GPS. The coarse session keeps the app alive so it can resume on time.
             manager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
@@ -191,7 +228,27 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     private func setLowPower(_ low: Bool) {
         guard interval == 0, low != isLowPower else { return }
         isLowPower = low
+        diag.log("power", low ? "Standing still: GPS resting (100 m accuracy)." : "Moving again: GPS back to full accuracy.")
         applyAccuracy()
+    }
+
+    private func logAccuracyIfChanged() {
+        let acc = manager.desiredAccuracy
+        let accText: String
+        switch acc {
+        case kCLLocationAccuracyBest: accText = "best"
+        case kCLLocationAccuracyBestForNavigation: accText = "navigation"
+        case kCLLocationAccuracyNearestTenMeters: accText = "10 m"
+        case kCLLocationAccuracyHundredMeters: accText = "100 m"
+        case kCLLocationAccuracyKilometer: accText = "1 km"
+        case kCLLocationAccuracyThreeKilometers: accText = "3 km (GPS off)"
+        default: accText = "\(acc) m"
+        }
+        let filter = manager.distanceFilter == CLLocationDistanceMax ? "max" : "\(Int(manager.distanceFilter)) m"
+        let text = "accuracy \(accText), distance filter \(filter)"
+        guard text != lastLoggedAccuracy else { return }
+        lastLoggedAccuracy = text
+        diag.log("gps", "Now \(text).")
     }
 
     // MARK: Motion
@@ -208,6 +265,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         guard activity.confidence != .low else { return }
         let type = ActivityType(motion: activity)
         guard type != .unknown else { return }
+        if type != currentActivity { diag.log("motion", "Activity: \(type.rawValue).") }
         currentActivity = type
         if type == .stationary {
             // Don't power down if we were just doing airliner speeds: smooth flight feels "stationary".
@@ -221,11 +279,57 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     // MARK: CLLocationManagerDelegate
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard isRecording, !isPaused else { return }
+        noteDelivery(locations)
+        guard isRecording else { return }
+        if isPaused { stats.droppedPaused += locations.count; return }
         if interval > 0 {
             for loc in locations { consider(loc) }
         } else {
             for loc in locations { record(loc) }
+        }
+    }
+
+    // MARK: Diagnostics
+
+    private func noteDelivery(_ locations: [CLLocation]) {
+        diag.heartbeat()
+        let now = Date()
+        let background = UIApplication.shared.applicationState == .background
+        if let last = lastDelivery, now.timeIntervalSince(last) > 5 * 60 {
+            diag.log("gap", "No location updates for \(Diagnostics.duration(now.timeIntervalSince(last))) before this one.")
+        }
+        lastDelivery = now
+        stats.batches += 1
+        if background { stats.backgroundBatches += 1 }
+        for loc in locations where loc.horizontalAccuracy >= 0 {
+            stats.bestAccuracy = min(stats.bestAccuracy, loc.horizontalAccuracy)
+            stats.worstAccuracy = max(stats.worstAccuracy, loc.horizontalAccuracy)
+        }
+        if now.timeIntervalSince(stats.since) >= 10 * 60 { flushStats() }
+    }
+
+    /// One summary line per ~10 minutes of deliveries (and when the app changes state).
+    func flushStats() {
+        guard stats.batches > 0 || stats.droppedPaused > 0 else { stats = DeliveryStats(); return }
+        let acc = stats.bestAccuracy.isFinite ? "accuracy \(Int(stats.bestAccuracy))–\(Int(stats.worstAccuracy)) m" : "no accuracy"
+        var dropped: [String] = []
+        if stats.droppedAccuracy > 0 { dropped.append("\(stats.droppedAccuracy) too inaccurate (>200 m)") }
+        if stats.droppedStale > 0 { dropped.append("\(stats.droppedStale) stale/duplicate") }
+        if stats.droppedPaused > 0 { dropped.append("\(stats.droppedPaused) while paused") }
+        diag.log("location", "Last \(Diagnostics.duration(Date().timeIntervalSince(stats.since))): "
+                 + "\(stats.batches) deliveries (\(stats.backgroundBatches) in background), \(stats.recorded) recorded, "
+                 + "\(acc)" + (dropped.isEmpty ? "." : "; dropped " + dropped.joined(separator: ", ") + "."))
+        stats = DeliveryStats()
+    }
+
+    static func describe(_ status: CLAuthorizationStatus) -> String {
+        switch status {
+        case .authorizedAlways: return "Always"
+        case .authorizedWhenInUse: return "While Using"
+        case .denied: return "Denied"
+        case .restricted: return "Restricted"
+        case .notDetermined: return "not asked yet"
+        @unknown default: return "unknown"
         }
     }
 
@@ -235,6 +339,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
 
     /// Stops recording until `date`, then resumes by itself.
     func pause(until date: Date) {
+        diag.log("recorder", "Paused until \(date.formatted(date: .abbreviated, time: .shortened)).")
         pausedUntil = date
         defaults.set(date, forKey: Keys.pausedUntil)
         isLowPower = false
@@ -243,6 +348,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     func resume() {
+        diag.log("recorder", "Resumed.")
         pausedUntil = nil
         defaults.removeObject(forKey: Keys.pausedUntil)
         configureSchedule()
@@ -285,6 +391,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     private var pointTimeout: TimeInterval { min(90, max(20, Double(interval) / 2)) }
 
     private func tick() {
+        diag.heartbeat()
         let now = Date()
         if let until = pausedUntil {
             if now >= until { resume() }           // also restarts timed mode if it's on
@@ -293,6 +400,9 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         if let started = pointStartedAt {
             if now.timeIntervalSince(started) >= pointTimeout { finishPoint() }
         } else if let due = nextPointAt, now >= due {
+            if now.timeIntervalSince(due) > 60 {
+                diag.log("timed", "Point was due \(Diagnostics.duration(now.timeIntervalSince(due))) ago (app wasn't running).")
+            }
             pointStartedAt = now
             bestCandidate = nil
             isTakingPoint = true
@@ -313,8 +423,15 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private func finishPoint() {
-        if let best = bestCandidate { record(best) }    // record() still drops fixes worse than 200 m
         let started = pointStartedAt ?? Date()
+        let waited = Int(Date().timeIntervalSince(started))
+        if let best = bestCandidate {
+            diag.log("timed", "Point: best fix ±\(Int(best.horizontalAccuracy)) m after \(waited) s"
+                     + (best.horizontalAccuracy > 200 ? " (too inaccurate, not saved)." : "."))
+            record(best)    // record() still drops fixes worse than 200 m
+        } else {
+            diag.log("timed", "Point: no fix at all within \(waited) s.")
+        }
         pointStartedAt = nil
         bestCandidate = nil
         isTakingPoint = false
@@ -336,11 +453,31 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         // kCLErrorLocationUnknown is transient (e.g. no GPS signal inside a plane); just keep going.
+        let code = (error as? CLError)?.code
+        if code == .locationUnknown { return }
+        diag.log("error", "Location error: \(code.map { "CLError \($0.rawValue)" } ?? "") \(error.localizedDescription)")
+    }
+
+    func locationManagerDidPauseLocationUpdates(_ manager: CLLocationManager) {
+        diag.log("gps", "iOS PAUSED location updates (should not happen: auto-pause is off).")
+    }
+
+    func locationManagerDidResumeLocationUpdates(_ manager: CLLocationManager) {
+        diag.log("gps", "iOS resumed location updates.")
+    }
+
+    func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
+        diag.heartbeat()
+        let arrived = visit.arrivalDate == .distantPast ? "?" : visit.arrivalDate.formatted(date: .omitted, time: .shortened)
+        let left = visit.departureDate == .distantFuture ? "still there" : "left \(visit.departureDate.formatted(date: .omitted, time: .shortened))"
+        diag.log("visit", "iOS reported a visit: arrived \(arrived), \(left), ±\(Int(visit.horizontalAccuracy)) m.")
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let previous = authorization
         authorization = manager.authorizationStatus
+        diag.log("permission", "Location permission \(Self.describe(authorization)), precise "
+                 + "\(manager.accuracyAuthorization == .fullAccuracy ? "on" : "OFF").")
         if isRecording && previous == .notDetermined && authorization == .authorizedWhenInUse {
             manager.requestAlwaysAuthorization()   // step two of the request in start()
         }
@@ -351,8 +488,10 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private func record(_ loc: CLLocation) {
-        guard !isPaused, loc.horizontalAccuracy >= 0, loc.horizontalAccuracy <= 200 else { return }
-        if let last = lastPoint, loc.timestamp <= last.t { return }
+        guard !isPaused else { stats.droppedPaused += 1; return }
+        guard loc.horizontalAccuracy >= 0, loc.horizontalAccuracy <= 200 else { stats.droppedAccuracy += 1; return }
+        if let last = lastPoint, loc.timestamp <= last.t { stats.droppedStale += 1; return }
+        stats.recorded += 1
 
         let point = TrackPoint(
             t: loc.timestamp,

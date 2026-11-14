@@ -4,6 +4,8 @@ import UIKit
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // Log first, so the diagnostics show why and how we were launched.
+        Diagnostics.shared.appLaunched(options: launchOptions)
         // When iOS relaunches us in the background for a location event, this restarts recording.
         _ = LocationRecorder.shared
         ExportView.removeOldExports()
@@ -40,6 +42,8 @@ struct RootView: View {
         }
         .onAppear { lock.unlockIfPending() }
         .onChange(of: scenePhase) { _, phase in
+            Diagnostics.shared.log("app", phase == .background ? "Moved to background." : phase == .active ? "Opened (foreground)." : "Inactive.")
+            if phase != .inactive { recorder.flushStats() }
             switch phase {
             case .background: lock.lockIfEnabled()
             case .active:

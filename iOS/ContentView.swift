@@ -151,6 +151,17 @@ struct ContentView: View {
 
     private var privacySection: some View {
         Section {
+            NavigationLink {
+                DiagnosticsView()
+            } label: {
+                HStack {
+                    Label("Diagnostics", systemImage: "stethoscope")
+                    if recorder.isRecording && (recorder.authorization != .authorizedAlways || !recorder.preciseAllowed) {
+                        Spacer()
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    }
+                }
+            }
             Toggle(isOn: $lock.enabled) {
                 Label("Require Face ID", systemImage: "faceid")
             }
@@ -182,7 +193,7 @@ struct ContentView: View {
         case .denied, .restricted:
             return "Location access is off for Pos XY."
         case .authorizedWhenInUse:
-            return "Set Location to \"Always\" so recording continues when the app is closed."
+            return "Set Location to \"Always\". With \"While Using\", iOS stops recording soon after you leave the app and never restarts it."
         default:
             return recorder.preciseAllowed ? nil : "Turn on Precise Location for usable tracks."
         }
