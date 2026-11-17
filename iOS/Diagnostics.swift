@@ -149,7 +149,11 @@ final class Diagnostics: ObservableObject {
             self?.defaults.set(Date(), forKey: Keys.lastAlive)
         }
         nc.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.log("app", "Memory warning: iOS may kill the app soon.")
+            self?.log("app", "Memory warning: iOS may kill the app soon (using \(Self.memoryText)).")
+        }
+        nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            // iOS picks which background apps to kill partly by memory footprint; log ours.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self?.log("memory", "In background using \(Self.memoryText).") }
         }
         nc.addObserver(forName: UIApplication.protectedDataWillBecomeUnavailableNotification, object: nil, queue: .main) { [weak self] _ in
             self?.log("device", "Locked.")
@@ -219,6 +223,22 @@ final class Diagnostics: ObservableObject {
         }
         recent.removeAll()
         log("diag", "Log cleared.")
+    }
+
+    /// This app's memory footprint (what iOS counts when choosing which app to kill), in bytes.
+    static func memoryFootprint() -> UInt64? {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        return kr == KERN_SUCCESS ? info.phys_footprint : nil
+    }
+
+    static var memoryText: String {
+        memoryFootprint().map { "\($0 >> 20) MB" } ?? "? MB"
     }
 
     static func duration(_ s: TimeInterval) -> String {
