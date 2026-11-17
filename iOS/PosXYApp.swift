@@ -6,8 +6,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         // Log first, so the diagnostics show why and how we were launched.
         Diagnostics.shared.appLaunched(options: launchOptions)
+        BackgroundRefresh.register()
         // When iOS relaunches us in the background for a location event, this restarts recording.
         _ = LocationRecorder.shared
+        BackgroundRefresh.schedule()
         ExportView.removeOldExports()
         return true
     }
@@ -45,7 +47,9 @@ struct RootView: View {
             Diagnostics.shared.log("app", phase == .background ? "Moved to background." : phase == .active ? "Opened (foreground)." : "Inactive.")
             if phase != .inactive { recorder.flushStats() }
             switch phase {
-            case .background: lock.lockIfEnabled()
+            case .background:
+                lock.lockIfEnabled()
+                BackgroundRefresh.schedule()
             case .active:
                 recorder.refreshTodayCount()
                 recorder.backfillMotion(reason: "opened")

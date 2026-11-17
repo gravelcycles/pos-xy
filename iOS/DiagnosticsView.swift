@@ -27,6 +27,11 @@ struct DiagnosticsView: View {
                                : recorder.powerMode == .max && recorder.interval == 0 ? "On (Max mode)" : "Off")
                 LabeledContent("Low Power Mode", value: ProcessInfo.processInfo.isLowPowerModeEnabled ? "On" : "Off")
                 LabeledContent("Memory in use", value: Diagnostics.memoryText)
+                check(ok: UIApplication.shared.backgroundRefreshStatus == .available,
+                      title: "Background App Refresh",
+                      value: UIApplication.shared.backgroundRefreshStatus == .available ? "On" : "Off",
+                      help: UIApplication.shared.backgroundRefreshStatus == .available ? nil
+                        : "Lets iOS wake Pos XY now and then to restart recording if it had to close it. Settings → General → Background App Refresh (on, and on for Pos XY). Low Power Mode turns it off.")
                 LabeledContent("This launch", value: diag.launchedByLocationEvent ? "By iOS, in the background" : "Normal")
                 if let last = diag.previousLastAlive {
                     LabeledContent("Previous run") {
