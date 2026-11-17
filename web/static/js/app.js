@@ -171,6 +171,13 @@ function drawTrack(cutoff) {
   for (const s of segs) {
     if (s.type === 'stationary') {
       const faded = s.first > cutoff;
+      // A stay's first and last points can be far apart (the next fix after a quiet spell often
+      // comes only once you've walked off); join them with a dotted line so the track isn't broken.
+      if (distance(pts[s.first], pts[s.last]) > 30) {
+        L.polyline([latlng(pts[s.first]), latlng(pts[s.last])], {
+          color: '#888', weight: 2.5, opacity: faded ? 0.4 : 0.85, dashArray: '2 6', lineCap: 'round', interactive: false,
+        }).addTo(trackLayer);
+      }
       const c = stayCenter(s);
       const circle = L.circle(c, {
         radius: 35, color: ACTIVITY.stationary.color, weight: 2, opacity: faded ? 0.3 : 0.9,

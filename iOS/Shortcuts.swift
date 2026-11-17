@@ -42,6 +42,25 @@ struct PauseRecordingIntent: AppIntent {
     }
 }
 
+/// For Shortcuts automations that wake Pos XY at moments you're likely to move: connecting to
+/// CarPlay or the car's Bluetooth, leaving Wi-Fi, unplugging the charger, set times of day.
+/// Each run saves a fix and, if recording is on, restarts continuous recording (even if iOS had
+/// killed the app), so the trip that follows gets recorded.
+struct RecordLocationNowIntent: AppIntent {
+    static let title: LocalizedStringResource = "Record Location Now"
+    static let description = IntentDescription("Saves your current location in Pos XY and makes sure recording is running. Use it in automations, e.g. when connecting to CarPlay.")
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let recorder = LocationRecorder.shared
+        if recorder.isPaused { return .result(dialog: "Pos XY is paused, so nothing was saved.") }
+        guard let fix = await recorder.recordNow() else {
+            return .result(dialog: "Pos XY couldn't get a GPS fix.")
+        }
+        return .result(dialog: "Saved your location (±\(Int(fix.horizontalAccuracy)) m).")
+    }
+}
+
 struct PosXYShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: StartRecordingIntent(),
@@ -53,5 +72,8 @@ struct PosXYShortcuts: AppShortcutsProvider {
         AppShortcut(intent: PauseRecordingIntent(),
                     phrases: ["Pause \(.applicationName)"],
                     shortTitle: "Pause Recording", systemImageName: "pause.circle")
+        AppShortcut(intent: RecordLocationNowIntent(),
+                    phrases: ["Record my location in \(.applicationName)", "Save location in \(.applicationName)"],
+                    shortTitle: "Record Location Now", systemImageName: "mappin.and.ellipse")
     }
 }

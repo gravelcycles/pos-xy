@@ -86,7 +86,7 @@ Rules:
 - **Writers** SHOULD record only medium- or high-confidence samples, merge consecutive spans of the same activity, and not write an activity that is still in progress.
 - **Readers** MUST drop spans with an unknown `act`, or with `end <= start`. They SHOULD sort spans by `start` and de-duplicate on (`start`, `act`).
 - **Using spans** (reference: `Shared/MotionSpan.swift`, `segmenter.js`):
-  - A point without its own `act` takes the activity of the span covering it.
+  - A point covered by a span takes the span's activity, even if it has its own `act`: a point's `act` is what the app last heard live, which can be stale (iOS stops delivering live motion updates in the background), while the span is what the coprocessor recorded at that time. Exception: a point's `train`, `bus`, `boat` or `flying` is kept, since motion never produces those. Points not covered by any span keep their own `act`.
   - A gap between points (§README "How activities are classified") that isn't a stay or a flight gets the moving activity (walking, running, cycling, driving) with the most overlap. This applies only if movement covers at least min(3 min, 20 % of the gap); ties go to that order.
 
 ```json
@@ -250,5 +250,6 @@ node --test web/tests/*.test.mjs                     # web viewer reader
 ## 8. Changelog
 
 - **1** (2026-11): first version.
+- **1, clarification** (2026-11): spans now win over a point's own `act` where they overlap (§2.1); previously they only labelled untagged points.
 - **1, addition** (2026-11): optional `motion` array of motion spans (§2.1). This is additive, so the version stays 1, and readers that don't know it ignore it.
 - **1, addition** (2026-11): optional `corrections` array (§2.2), and the `train`, `bus` and `boat` activities. Readers that don't know these map them to `unknown`, as §2 already requires.

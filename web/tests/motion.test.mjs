@@ -45,8 +45,9 @@ test('span helpers', () => {
   assert.equal(dominantMoving(0, 2000, [{ start: 200, end: 230, act: 'driving' }]), null);
 });
 
-test('untagged points take the activity of the span covering them', () => {
-  const out = fillActivities([{ t: 150, lat: 0, lon: 0 }, { t: 150, lat: 0, lon: 0, act: 'cycling' }],
-    [{ start: 100, end: 200, act: 'walking' }]);
-  assert.deepEqual(out.map((p) => p.act), ['walking', 'cycling']);
+test('the motion history wins over (possibly stale) point tags, except tags motion cannot produce', () => {
+  const pts = ['', 'stationary', 'cycling', 'train', 'flying'].map((act) => ({ t: 150, lat: 0, lon: 0, ...(act ? { act } : {}) }));
+  pts.push({ t: 250, lat: 0, lon: 0, act: 'stationary' });          // not covered by a span: tag kept
+  const out = fillActivities(pts, [{ start: 100, end: 200, act: 'walking' }]);
+  assert.deepEqual(out.map((p) => p.act), ['walking', 'walking', 'walking', 'train', 'flying', 'stationary']);
 });

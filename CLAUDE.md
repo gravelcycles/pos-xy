@@ -36,6 +36,7 @@ node --test web/tests/*.test.mjs                    # 37 JS tests: format vector
 scripts/parity/run.sh                               # Swift vs JS on every fixture (needs Xcode's swiftc + node)
 python3 docs/test-vectors/make_vectors.py --check   # crypto vectors, independent impl (pip install cryptography)
 python3 web/serve.py                                # web viewer on http://localhost:8765, lists ~/Downloads
+node scripts/compare/compare.mjs --google Timeline.json --posxy export.json [--diag log.txt]   # what Pos XY dropped vs Google (PXY_PASSPHRASE for .pxy)
 scripts/deploy-iphone.sh                            # build, sign, install and launch on the connected iPhone
 scripts/install-mac-viewer.sh                       # build the Mac viewer into /Applications
 xcodebuild -project PosXY.xcodeproj -scheme PosXY -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build

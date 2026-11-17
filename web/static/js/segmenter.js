@@ -171,12 +171,19 @@ export function dominantMoving(a, b, spans) {
   return best;
 }
 
+/**
+ * Labels points from the motion history. Where a span covers a point, the span wins over the
+ * point's own tag: the tag is whatever the app last heard live, which goes stale in the background
+ * (iOS stops delivering live motion updates), while the history is what the coprocessor recorded
+ * at that moment. Tags only motion can't produce (train, bus, boat, flying) are kept.
+ */
+const KEEP_TAG = new Set(['train', 'bus', 'boat', 'flying']);
 export function fillActivities(points, spans) {
   if (!spans.length) return points;
   return points.map((p) => {
-    if (p.act && p.act !== 'unknown') return p;
+    if (KEEP_TAG.has(p.act)) return p;
     const a = activityAt(p.t, spans);
-    return a ? { ...p, act: a } : p;
+    return a && a !== p.act ? { ...p, act: a } : p;
   });
 }
 

@@ -64,8 +64,14 @@ enum MotionSpans {
     /// Points without their own activity tag get the activity of the span that covers them.
     static func fill(_ points: [TrackPoint], from spans: [MotionSpan]) -> [TrackPoint] {
         guard !spans.isEmpty else { return points }
+        // Where a span covers a point, the span wins over the point's own tag: the tag is whatever
+        // the app last heard live, which goes stale in the background (iOS stops delivering live
+        // motion updates), while the history is what the coprocessor recorded at that moment.
+        // Tags motion can't produce (train, bus, boat, flying) are kept. Twin: segmenter.js.
+        let keep: Set<ActivityType> = [.train, .bus, .boat, .flying]
         return points.map { p in
-            guard p.act == nil || p.act == .unknown, let a = activity(at: p.t, in: spans) else { return p }
+            if let act = p.act, keep.contains(act) { return p }
+            guard let a = activity(at: p.t, in: spans), a != p.act else { return p }
             var q = p
             q.act = a
             return q

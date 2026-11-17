@@ -92,7 +92,16 @@ final class TileImages: ObservableObject {
     private var bumpScheduled = false
 
     private init() {
-        cache.countLimit = 400
+        cache.countLimit = 150      // ~40 MB decoded at most
+        // Background apps with a big memory footprint are the first iOS kills when the foreground
+        // app needs memory, and a killed Pos XY records nothing until iOS relaunches it. So drop
+        // every decoded tile when leaving the screen (they're on disk; reloading is instant).
+        let nc = NotificationCenter.default
+        for name in [UIApplication.didEnterBackgroundNotification, UIApplication.didReceiveMemoryWarningNotification] {
+            nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.cache.removeAllObjects()
+            }
+        }
     }
 
     func image(_ k: TileKey) -> UIImage? {

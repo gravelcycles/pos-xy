@@ -22,9 +22,11 @@ struct DiagnosticsView: View {
                 check(ok: recorder.isRecording, title: "Recording", value: recorder.isRecording ? "On" : "Off", help: nil)
                 LabeledContent("Mode", value: LocationRecorder.describe(interval: recorder.interval)
                                + (recorder.interval == 0 ? " · \(recorder.powerMode.title)" : ""))
-                LabeledContent("Blue location pill", value: recorder.authorization == .authorizedAlways
-                               ? "Off" : "On (iOS requires it with While Using)")
+                LabeledContent("Blue location pill", value: recorder.authorization != .authorizedAlways
+                               ? "On (iOS requires it with While Using)"
+                               : recorder.powerMode == .max && recorder.interval == 0 ? "On (Max mode)" : "Off")
                 LabeledContent("Low Power Mode", value: ProcessInfo.processInfo.isLowPowerModeEnabled ? "On" : "Off")
+                LabeledContent("Memory in use", value: Diagnostics.memoryText)
                 LabeledContent("This launch", value: diag.launchedByLocationEvent ? "By iOS, in the background" : "Normal")
                 if let last = diag.previousLastAlive {
                     LabeledContent("Previous run") {
