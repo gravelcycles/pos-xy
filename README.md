@@ -235,7 +235,7 @@ If iOS shuts the app down, three system triggers bring it back, all of which nee
 
 The diagnostics log shows each of these wake-ups ("Left the 150 m geofence: iOS woke the app").
 
-**Motion history fills the gaps.** The iPhone's motion chip keeps 7 days of walk/run/bike/drive history, even while Pos XY isn't running. Each time the app wakes up, it saves that history on the phone as part of your data, and exports include it. The viewers then label a gap with no GPS points from what you were actually doing. A drive during which iOS had suspended the app shows as one Drive, drawn as a straight line between the last and next points, instead of an "unknown" gap.
+**Motion history fills the gaps.** The iPhone's motion chip keeps 7 days of walk/run/bike/drive history, even while Pos XY isn't running. Each time the app wakes up, it saves that history on the phone as part of your data, and exports include it. The viewers then label a gap with no GPS points from what you were actually doing. A drive during which iOS had suspended the app shows as one Drive, drawn as a straight line between the last and next points, instead of an "unknown" gap. Where the history and a point's own tag disagree, the history wins: the tag is what the app last heard live, and iOS often stops sending live updates in the background, so an hour of walking could otherwise be stamped "stationary".
 
 ## Battery
 

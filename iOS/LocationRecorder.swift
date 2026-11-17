@@ -80,6 +80,9 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     private let store = PointStore.shared
     private var countDayKey = ""
     private var lastFastFix = Date.distantPast
+    /// Last time the GPS itself showed we were moving (wakes a resting GPS; see record()).
+    private var lastMovementEvidence = Date.distantPast
+    private var lastMotionRefresh = Date.distantPast
     // Interval mode
     private var tickTimer: Timer?
     private var pointStartedAt: Date?
@@ -318,9 +321,11 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         }
         currentActivity = type
         if type == .stationary {
-            // Don't power down if we were just doing airliner speeds: smooth flight feels "stationary".
+            // Don't power down if we were just doing airliner speeds: smooth flight feels "stationary",
+            // or if the GPS just showed us moving (slow ambling can read as "stationary").
             let recentlyFast = Date().timeIntervalSince(lastFastFix) < 10 * 60
-            if powerMode == .smart && !recentlyFast { setLowPower(true) }
+            let recentlyMoving = Date().timeIntervalSince(lastMovementEvidence) < 3 * 60
+            if powerMode == .smart && !recentlyFast && !recentlyMoving { setLowPower(true) }
         } else {
             setLowPower(false)
         }
@@ -336,6 +341,23 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
             for loc in locations { consider(loc) }
         } else {
             for loc in locations { record(loc) }
+        }
+    }
+
+    /// Live motion updates mostly stop arriving while the app is in the background, so
+    /// `currentActivity` goes stale. The owner's data had an hour of walking stamped "stationary"
+    /// (and the GPS resting the whole time) while the motion history said walking. So on location
+    /// deliveries, at most once a minute, re-read the last few minutes of motion history.
+    private func refreshMotionIfStale() {
+        guard isRecording, CMMotionActivityManager.isActivityAvailable(),
+              Date().timeIntervalSince(lastMotionRefresh) > 60 else { return }
+        lastMotionRefresh = Date()
+        motion.queryActivityStarting(from: Date().addingTimeInterval(-5 * 60), to: Date(), to: .main) { [weak self] acts, _ in
+            guard let self,
+                  let latest = acts?.last(where: { $0.confidence != .low && ActivityType(motion: $0) != .unknown }),
+                  ActivityType(motion: latest) != self.currentActivity else { return }
+            self.diag.log("motion", "Live activity was stale; history says \(ActivityType(motion: latest).rawValue).")
+            self.handle(latest)
         }
     }
 
@@ -437,6 +459,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
             backfillMotion(reason: "periodic")
         }
         lastDelivery = now
+        refreshMotionIfStale()
         stats.batches += 1
         if background { stats.backgroundBatches += 1 }
         for loc in locations where loc.horizontalAccuracy >= 0 {
@@ -688,6 +711,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
             return false
         }
         if let last = lastPoint, loc.timestamp <= last.t { stats.droppedStale += 1; return false }
+        let previous = lastPoint
         if source == nil, powerMode == .max, interval == 0, let last = lastPoint {
             // Max delivers ~1 fix a second. Keep them all while moving; while standing still keep
             // one a minute so the file shows we were alive (and doesn't grow by 10 MB a day).
@@ -720,7 +744,21 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         }
 
         if loc.speed > 30 { lastFastFix = loc.timestamp }
-        if isLowPower && loc.speed > 3 { setLowPower(false) }
+        // GPS evidence of movement wakes a resting GPS, without waiting for the motion chip (whose
+        // live updates may not arrive in the background): walking speed on a good fix, or 100 m+
+        // from the previous point within 10 minutes.
+        if loc.horizontalAccuracy <= 50, source == nil {
+            var moving = loc.speed >= 1.0
+            if let prev = previous, loc.timestamp.timeIntervalSince(prev.t) < 600,
+               loc.distance(from: CLLocation(latitude: prev.lat, longitude: prev.lon)) >= 100 { moving = true }
+            if moving {
+                lastMovementEvidence = Date()
+                if isLowPower {
+                    diag.log("power", "GPS shows movement (\(String(format: "%.1f", max(loc.speed, 0))) m/s).")
+                    setLowPower(false)
+                }
+            }
+        }
         return true
     }
 
