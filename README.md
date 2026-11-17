@@ -96,6 +96,17 @@ Drop the file on the web viewer (or open it in the Mac app), and it merges with 
 
 The track up to the playhead is drawn in colour and the rest faded. Stays are purple circles. Flights and unknown gaps are dashed.
 
+### Compare with Google (what is Pos XY missing?)
+
+If Google Timeline is also on, export both and run:
+
+```sh
+PXY_PASSPHRASE='…' node scripts/compare/compare.mjs --google Timeline.json --posxy "Pos XY export.pxy" \
+    --diag "PosXY diagnostics 2026-11-17.txt" --tz America/Los_Angeles --out compare.md
+```
+
+It reports, for the days both cover: how much of Google's movement time has Pos XY points, every trip Pos XY missed or half-recorded, Pos XY gaps during which Google shows you moving, an hour-of-day histogram of misses, and (with `--diag`) the app's log lines around each miss. It runs locally.
+
 ## Places
 
 Pos XY finds the places you keep coming back to, on the device or viewer, from your own data:
@@ -155,9 +166,20 @@ It's heuristic. Trains usually show up as **Drive**.
 ## Pause, Siri and Shortcuts
 
 - **Pause recording…** on the main screen stops recording for 1 hour, 4 hours, or until 7:00 tomorrow, then resumes by itself. Use it for places you'd rather not have in your history. Nothing is recorded while paused, and the GPS stays off.
-- **Siri and Shortcuts:** *Start Recording*, *Stop Recording* and *Pause Recording* (for N hours) show up in the Shortcuts app and work with Siri ("Pause Pos XY"). Pair them with automations, for example *When CarPlay connects → Start Recording*, or *When I arrive at [place] → Pause Recording*.
+- **Siri and Shortcuts:** *Start Recording*, *Stop Recording*, *Pause Recording* (for N hours) and *Record Location Now* show up in the Shortcuts app and work with Siri ("Pause Pos XY"). Pair them with automations, for example *When CarPlay connects → Start Recording*, or *When I arrive at [place] → Pause Recording*.
 - The Export row shows when you last made an export, as a reminder to back up.
 
+### More data: wake Pos XY with automations
+
+*Record Location Now* saves a fix and, if recording is on, restarts continuous recording, **even if iOS had killed the app** (it works in the background with the Always permission). So automations that run when you're about to move catch trips the app would otherwise miss. In Shortcuts → Automation → New, pick a trigger, add *Record Location Now*, and choose **Run Immediately**:
+- **CarPlay** → Connects (and Disconnects)
+- **Bluetooth** → your car → Connects
+- **Wi-Fi** → your home/work network → Leaves
+- **Charger** → Is Disconnected
+- **Time of Day** → a few times you're usually out (one automation per time)
+- **App** → Maps / your music app → Is Opened
+
+Each run is one GPS fix (a few seconds) plus restarting recording, so they cost almost nothing.
 ## Lock Screen, Control Center and the Action button (iOS 18)
 
 - **Controls:** *Record Location* (on/off) and *Pause for 1 Hour* (tap again to resume). Add them to **Control Center** (swipe down → hold → Add a Control → Pos XY), to the **Lock Screen**'s bottom buttons (hold the Lock Screen → Customize → Lock Screen → tap a button), or to the **Action button** (Settings → Action Button → Controls → Pos XY).
@@ -171,6 +193,7 @@ On the phone, **Frequency → Record a point**:
 | Setting | What it does | Battery |
 | --- | --- | --- |
 | **Continuously** (default) | A point about every 15 m you move. Best walk/bike/drive detection. | Highest while moving. Smart mode rests the GPS when you're still. |
+| **Continuously, GPS mode Max** | Every fix (about 1/s) while moving, a heartbeat point every minute while still, GPS never rests, and the blue pill stays on (an active location session, as navigation apps hold, which is the strongest "keep me running" signal iOS has). | Highest. |
 | **Every minute / 5 minutes / 15 minutes / hour** | One GPS point on that schedule. | Much lower: the GPS is off between points. |
 | **Custom…** | Any interval from 10 seconds to 12 hours. | |
 
@@ -208,7 +231,7 @@ Then open **Diagnostics** on the main screen. It shows a health check, including
 If iOS shuts the app down, three system triggers bring it back, all of which need the "Always" permission:
 - a **rolling geofence**: a 150 m circle around your latest point, moved as you go, which relaunches the app once you leave it;
 - **significant location changes**, after about 500 m of movement;
-- **visits**, when you arrive at or leave a place.
+- **visits**, when you arrive at or leave a place. The visit's arrival and departure are also saved as points when they're newer than the last point, so even a killed app gets "you were here until 5:40".
 
 The diagnostics log shows each of these wake-ups ("Left the 150 m geofence: iOS woke the app").
 

@@ -70,7 +70,14 @@ struct FrequencySection: View {
 
     private var footer: String {
         if recorder.interval == 0 {
-            return "Continuously records a point about every 15 m you move: the most detail and the best walk/bike/drive detection. Smart rests the GPS while you're standing still; Always precise is best on flights."
+            switch recorder.powerMode {
+            case .smart:
+                return "Continuously records a point about every 15 m you move. Smart rests the GPS while you're standing still to save battery."
+            case .precise:
+                return "Continuously records a point about every 5 m you move and never rests the GPS. Best on flights."
+            case .max:
+                return "Max: every GPS fix while moving (about one a second), a heartbeat point every minute while still, the GPS never rests, and the blue location pill stays on, which tells iOS this app is actively tracking, like navigation. Uses the most battery."
+            }
         }
         return "Takes one GPS point on that schedule and keeps the GPS off in between, which saves a lot of battery. Trips are still classified, but with less detail the longer the interval."
     }

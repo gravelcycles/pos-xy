@@ -12,15 +12,20 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     static let shared = LocationRecorder()
 
     enum PowerMode: String, CaseIterable, Identifiable {
-        case smart, precise
+        case smart, precise, max
         var id: String { rawValue }
         var title: String {
             switch self {
             case .smart: return "Smart"
             case .precise: return "Always precise"
+            case .max: return "Max"
             }
         }
     }
+
+    /// Max mode keeps at most one point a minute while standing still (a heartbeat, so a gap in
+    /// the data always means "not recording", never "didn't move").
+    static let maxStillInterval: TimeInterval = 60
 
     private enum Keys {
         static let recording = "recorder.isRecording"
@@ -49,7 +54,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
                                                     Self.customIntervalRange.upperBound)
             if clamped != interval { interval = clamped }   // assigning inside didSet doesn't re-trigger it
             defaults.set(interval, forKey: Keys.interval)
-            if isRecording { configureSchedule() }
+            if isRecording { applyBackgroundSession(); configureSchedule() }
         }
     }
     /// When the next timed point will be taken (interval mode only).
@@ -62,7 +67,9 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     @Published var powerMode: PowerMode {
         didSet {
             defaults.set(powerMode.rawValue, forKey: Keys.power)
-            if powerMode == .precise { isLowPower = false }
+            if powerMode != .smart { isLowPower = false }
+            diag.log("recorder", "GPS mode \(powerMode.rawValue).")
+            if isRecording { applyBackgroundSession() }
             applyAccuracy()
         }
     }
@@ -100,7 +107,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     private struct DeliveryStats {
         var since = Date()
         var batches = 0, backgroundBatches = 0, recorded = 0
-        var droppedAccuracy = 0, droppedStale = 0, droppedPaused = 0
+        var droppedAccuracy = 0, droppedStale = 0, droppedPaused = 0, thinned = 0
         var bestAccuracy = Double.infinity, worstAccuracy = 0.0
     }
 
@@ -189,19 +196,8 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
     private func beginUpdates() {
         manager.allowsBackgroundLocationUpdates = true
         manager.pausesLocationUpdatesAutomatically = false   // never let iOS silently stop us
-        // The blue location pill (top left). With Always permission, background updates keep going
-        // without it, so we don't show it, like Google Maps outside navigation. With only "While
-        // Using", iOS keeps background updates going only while the pill is shown, and the
-        // background-activity session is what allows them at all, so then we need both.
-        let always = manager.authorizationStatus == .authorizedAlways
-        manager.showsBackgroundLocationIndicator = !always
         manager.activityType = .other
-        if always {
-            backgroundSession?.invalidate()            // a live session forces the pill on
-            backgroundSession = nil
-        } else if backgroundSession == nil {
-            backgroundSession = CLBackgroundActivitySession()
-        }
+        applyBackgroundSession()
         isLowPower = false
         applyAccuracy()
         manager.startUpdatingLocation()
@@ -220,6 +216,24 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
                  + "blue pill \(manager.showsBackgroundLocationIndicator ? "on" : "off"), "
                  + "background session \(backgroundSession == nil ? "off" : "on"), "
                  + "rolling geofence \(geofence ? "on" : "off: needs Always")).")
+    }
+
+    /// The blue location pill (top left) and the background-activity session. With Always
+    /// permission, background updates keep going without them, so normally we don't show the pill,
+    /// like Google Maps outside navigation. With only "While Using", iOS keeps background updates
+    /// going only while the pill is shown and the session is what allows them at all, so then we
+    /// need both. Max mode holds them anyway: a live session is the strongest signal to iOS that
+    /// the app is actively tracking (it's what navigation apps use), at the price of the pill.
+    private func applyBackgroundSession() {
+        let always = manager.authorizationStatus == .authorizedAlways
+        let hold = !always || (powerMode == .max && interval == 0)
+        manager.showsBackgroundLocationIndicator = hold
+        if !hold {
+            backgroundSession?.invalidate()            // a live session forces the pill on
+            backgroundSession = nil
+        } else if backgroundSession == nil {
+            backgroundSession = CLBackgroundActivitySession()
+        }
     }
 
     private func applyAccuracy() {
@@ -246,6 +260,10 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
             // Standing still: let the GPS chip sleep.
             manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
             manager.distanceFilter = 100
+        } else if powerMode == .max {
+            // Every fix the chip produces (~1 a second); record() thins them while standing still.
+            manager.desiredAccuracy = kCLLocationAccuracyBest
+            manager.distanceFilter = kCLDistanceFilterNone
         } else {
             manager.desiredAccuracy = kCLLocationAccuracyBest
             manager.distanceFilter = powerMode == .precise ? 5 : 15
@@ -436,6 +454,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         if stats.droppedAccuracy > 0 { dropped.append("\(stats.droppedAccuracy) too inaccurate (>200 m)") }
         if stats.droppedStale > 0 { dropped.append("\(stats.droppedStale) stale/duplicate") }
         if stats.droppedPaused > 0 { dropped.append("\(stats.droppedPaused) while paused") }
+        if stats.thinned > 0 { dropped.append("\(stats.thinned) thinned while still (Max)") }
         diag.log("location", "Last \(Diagnostics.duration(Date().timeIntervalSince(stats.since))): "
                  + "\(stats.batches) deliveries (\(stats.backgroundBatches) in background), \(stats.recorded) recorded, "
                  + "\(acc)" + (dropped.isEmpty ? "." : "; dropped " + dropped.joined(separator: ", ") + "."))
@@ -614,6 +633,36 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         let arrived = visit.arrivalDate == .distantPast ? "?" : visit.arrivalDate.formatted(date: .omitted, time: .shortened)
         let left = visit.departureDate == .distantFuture ? "still there" : "left \(visit.departureDate.formatted(date: .omitted, time: .shortened))"
         diag.log("visit", "iOS reported a visit: arrived \(arrived), \(left), ±\(Int(visit.horizontalAccuracy)) m.")
+        // Save the visit's arrival/departure as points when they're newer than what we have:
+        // after the app was suspended or killed, a visit is often the only sign of where you were.
+        guard isRecording, !isPaused else { return }
+        var saved = 0
+        for date in [visit.arrivalDate, visit.departureDate]
+        where date != .distantPast && date != .distantFuture && date <= Date() {
+            let loc = CLLocation(coordinate: visit.coordinate, altitude: 0, horizontalAccuracy: visit.horizontalAccuracy,
+                                 verticalAccuracy: -1, timestamp: date)
+            if record(loc, act: .stationary, source: "visit") { saved += 1 }
+        }
+        if saved > 0 { diag.log("visit", "Saved \(saved) point\(saved == 1 ? "" : "s") from the visit.") }
+    }
+
+    /// Takes one fix right now (for the "Record Location Now" shortcut) and saves it, unless paused.
+    /// Works in the background with Always permission, so a Shortcuts automation (CarPlay, car
+    /// Bluetooth, Wi-Fi, charger, time of day…) can wake the app, even after it was killed, which
+    /// also restarts continuous recording if it's on.
+    @MainActor
+    func recordNow(timeout: TimeInterval = 25) async -> CLLocation? {
+        diag.log("shortcut", "Record Location Now (app \(Diagnostics.stateCode(UIApplication.shared.applicationState))).")
+        if isRecording && !isPaused { beginUpdates() }
+        guard !isPaused else { return nil }
+        let fix = await OneShotLocator().locate(timeout: timeout)
+        if let fix {
+            let saved = record(fix, source: "shortcut")
+            diag.log("shortcut", "Fix ±\(Int(fix.horizontalAccuracy)) m\(saved ? " saved" : " not saved (inaccurate or older than the last point)").")
+        } else {
+            diag.log("shortcut", "No fix within \(Int(timeout)) s.")
+        }
+        return fix
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -630,14 +679,23 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
         }
     }
 
-    private func record(_ loc: CLLocation) {
-        guard !isPaused else { stats.droppedPaused += 1; return }
+    @discardableResult
+    private func record(_ loc: CLLocation, act: ActivityType? = nil, source: String? = nil) -> Bool {
+        guard !isPaused else { stats.droppedPaused += 1; return false }
         guard loc.horizontalAccuracy >= 0, loc.horizontalAccuracy <= 200 else {
             stats.droppedAccuracy += 1
             if loc.horizontalAccuracy > 200 { lastDroppedAccuracy = loc.horizontalAccuracy; lastDroppedAt = Date() }
-            return
+            return false
         }
-        if let last = lastPoint, loc.timestamp <= last.t { stats.droppedStale += 1; return }
+        if let last = lastPoint, loc.timestamp <= last.t { stats.droppedStale += 1; return false }
+        if source == nil, powerMode == .max, interval == 0, let last = lastPoint {
+            // Max delivers ~1 fix a second. Keep them all while moving; while standing still keep
+            // one a minute so the file shows we were alive (and doesn't grow by 10 MB a day).
+            let dt = loc.timestamp.timeIntervalSince(last.t)
+            let moved = loc.distance(from: CLLocation(latitude: last.lat, longitude: last.lon))
+            let still = (loc.speed < 0 || loc.speed < 1) && moved < max(10, loc.horizontalAccuracy)
+            if still && dt < Self.maxStillInterval { stats.thinned += 1; return false }
+        }
         stats.recorded += 1
 
         let point = TrackPoint(
@@ -648,7 +706,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
             acc: Self.round(loc.horizontalAccuracy, 1),
             spd: loc.speed >= 0 ? Self.round(loc.speed, 2) : nil,
             crs: loc.course >= 0 ? Self.round(loc.course, 0).truncatingRemainder(dividingBy: 360) : nil,
-            act: currentActivity == .unknown ? nil : currentActivity
+            act: act ?? (currentActivity == .unknown ? nil : currentActivity)
         )
         store.append(point)
         lastPoint = point
@@ -663,6 +721,7 @@ final class LocationRecorder: NSObject, ObservableObject, CLLocationManagerDeleg
 
         if loc.speed > 30 { lastFastFix = loc.timestamp }
         if isLowPower && loc.speed > 3 { setLowPower(false) }
+        return true
     }
 
     private static func round(_ x: Double, _ digits: Int) -> Double {
