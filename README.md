@@ -235,6 +235,8 @@ If iOS shuts the app down, three system triggers bring it back, all of which nee
 
 The diagnostics log shows each of these wake-ups ("Left the 150 m geofence: iOS woke the app").
 
+**Background app refresh** is a fourth, which needs no movement: iOS wakes the app every so often (it decides when, typically every 15 minutes to a few hours), even after it closed it for memory. Each wake-up restarts recording and saves a point. It needs Settings → General → Background App Refresh on, for Pos XY too; Low Power Mode pauses it. It does nothing after you swipe the app away.
+
 **Motion history fills the gaps.** The iPhone's motion chip keeps 7 days of walk/run/bike/drive history, even while Pos XY isn't running. Each time the app wakes up, it saves that history on the phone as part of your data, and exports include it. The viewers then label a gap with no GPS points from what you were actually doing. A drive during which iOS had suspended the app shows as one Drive, drawn as a straight line between the last and next points, instead of an "unknown" gap. Where the history and a point's own tag disagree, the history wins: the tag is what the app last heard live, and iOS often stops sending live updates in the background, so an hour of walking could otherwise be stamped "stationary".
 
 ## Battery
