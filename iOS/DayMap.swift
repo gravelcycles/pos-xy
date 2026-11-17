@@ -171,6 +171,17 @@ struct DayMapCanvas: View {
             ctx.stroke(path(0...(pts.count - 1)), with: .color(.white.opacity(0.8)), style: casing)
             ctx.stroke(path(0...(pts.count - 1)), with: .color(.gray), lineWidth: 4)
         }
+        // A stay's first and last points can be far apart: after a quiet spell the next fix often
+        // comes only once you've walked off (geofence wake-up, GPS resting). Join them with a dotted
+        // line so the track doesn't look broken and the latest point isn't left floating.
+        let connector = StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [2, 6])
+        for seg in data.segments where seg.type == .stationary && seg.last > seg.first {
+            guard Geo.distance(data.points[seg.first], data.points[seg.last]) > 30 else { continue }
+            var p = Path()
+            p.move(to: pts[seg.first])
+            p.addLine(to: pts[seg.last])
+            ctx.stroke(p, with: .color(.gray.opacity(seg.first > cut ? 0.35 : 0.85)), style: connector)
+        }
         for faded in [true, false] {
             for seg in data.segments {
                 let r: ClosedRange<Int>

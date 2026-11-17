@@ -37,6 +37,8 @@ final class OSMTileOverlay: MKTileOverlay {
 final class TrackPolyline: MKPolyline {
     var type: ActivityType = .unknown
     var faded = false
+    /// Thin dotted line joining where a stay started and ended (see `redraw`).
+    var connector = false
 }
 
 final class StayCircle: MKCircle {
@@ -144,6 +146,16 @@ struct TrackMapView: NSViewRepresentable {
             }
             for seg in segments {
                 if seg.type == .stationary {
+                    // A stay's first and last points can be far apart: after a quiet spell the next
+                    // fix often comes only once you've walked off (geofence, GPS resting). Join them
+                    // with a dotted line so the track doesn't look broken.
+                    let a = coords[seg.first], b = coords[seg.last]
+                    if MKMapPoint(a).distance(to: MKMapPoint(b)) > 30 {
+                        let c = TrackPolyline(coordinates: [a, b], count: 2)
+                        c.connector = true
+                        c.faded = seg.first > cutoff
+                        trackOverlays.append(c)
+                    }
                     let mid = coords[(seg.first + seg.last) / 2]
                     let circle = StayCircle(center: mid, radius: 35)
                     circle.faded = seg.first > cutoff
@@ -201,6 +213,14 @@ struct TrackMapView: NSViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let tiles = overlay as? MKTileOverlay {
                 return MKTileOverlayRenderer(tileOverlay: tiles)
+            }
+            if let line = overlay as? TrackPolyline, line.connector {
+                let r = MKPolylineRenderer(polyline: line)
+                r.strokeColor = NSColor.gray.withAlphaComponent(line.faded ? 0.4 : 0.85)
+                r.lineWidth = 2.5
+                r.lineCap = .round
+                r.lineDashPattern = [2, 6]
+                return r
             }
             if let line = overlay as? TrackPolyline {
                 let r = MKPolylineRenderer(polyline: line)
